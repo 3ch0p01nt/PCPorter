@@ -81,6 +81,11 @@
           "SQLitePCLRaw.core": "3.0.5"
         }
       },
+      "Microsoft.Database.ManagedEsent": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "TFZNlzraUZO79RA7CBdwpDpgatpK20yWOfCgOdS3/MvaFXhQLaoHbUnx6dzRtGIP1ufF9ZsSmaWIcdvCqxuhYQ=="
+      },
       "Microsoft.TestPlatform.ObjectModel": {
         "type": "Transitive",
         "resolved": "17.14.1",
@@ -226,6 +231,7 @@
       "pcporter.testkit": {
         "type": "Project",
         "dependencies": {
+          "Microsoft.Database.ManagedEsent": "[3.2.0, )",
           "PCPorter.Collectors": "[0.1.0, )",
           "xunit": "[2.9.3, )"
         }

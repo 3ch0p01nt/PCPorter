@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PCPorter.Forensics\PCPorter.Forensics.csproj" />
+    <ProjectReference Include="..\PCPorter.TestKit\PCPorter.TestKit.csproj" />
   </ItemGroup>
 
 </Project>

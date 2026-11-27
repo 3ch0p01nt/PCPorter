@@ -2,6 +2,12 @@
   "version": 1,
   "dependencies": {
     "net10.0-windows10.0.19041": {
+      "Microsoft.Database.ManagedEsent": {
+        "type": "Direct",
+        "requested": "[3.2.0, )",
+        "resolved": "3.2.0",
+        "contentHash": "TFZNlzraUZO79RA7CBdwpDpgatpK20yWOfCgOdS3/MvaFXhQLaoHbUnx6dzRtGIP1ufF9ZsSmaWIcdvCqxuhYQ=="
+      },
       "xunit": {
         "type": "Direct",
         "requested": "[2.9.3, )",
