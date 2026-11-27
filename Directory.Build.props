@@ -5,6 +5,8 @@
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
+    <!-- Builds must not carry the builder's folder (user name, OneDrive tenant) in PDB paths, stack traces or the EXE. -->
+    <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>

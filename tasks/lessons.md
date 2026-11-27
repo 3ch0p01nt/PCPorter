@@ -55,3 +55,8 @@
   "$label:" parses as a drive-qualified variable (use ${label}:), and ConvertFrom-Json in 5.1 rejects a JSON object
   with an empty key "" (pwsh 7 accepts it). Rule: run every shipped script with `powershell.exe -NoProfile -File`
   before packaging; never write empty or null dictionary keys to JSON.
+
+## Check the binary, not just the source, before anything goes public (2026-11-27)
+- The source was scrubbed before the repo went public, but the published EXE still held the build folder (Windows user
+  name, OneDrive tenant) in five embedded PDB paths. Fixed with PathMap in Directory.Build.props. Rule: before
+  publishing a release, search the EXE's bytes (ASCII and UTF-16) for the user name, tenant and machine name.
