@@ -107,6 +107,20 @@ public sealed class HistoryJobTests : IDisposable
     }
 
     [Fact]
+    public void Summary_and_exit_code_report_counts_and_partial_runs()
+    {
+        using var source = Source();
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+        var s = HistoryJob.Summarize(r);
+        Assert.Equal((2, 3, 1, 1, 0), (s.Profiles, s.Visits, s.Searches, s.Downloads, s.Recovered));
+        Assert.True(s.Warnings >= 1);
+        Assert.Equal(PCPorter.Core.Cli.ExitCodes.Partial, HistoryJob.ExitCode(r));
+
+        var clean = r with { Scan = r.Scan with { Warnings = [] }, FolderWarnings = [] };
+        Assert.Equal(PCPorter.Core.Cli.ExitCodes.Ok, HistoryJob.ExitCode(clean));
+    }
+
+    [Fact]
     public void Live_runs_read_only_the_current_account_unless_all_users_is_set()
     {
         using var offline = Source();

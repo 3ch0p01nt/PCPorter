@@ -159,4 +159,16 @@ public static class HistoryJob
     }
 
     static string FirstLine(string message) => message.Split('\n')[0].Trim();
+
+    /// <summary>The counts the CLI prints (and --json emits).</summary>
+    public static HistorySummary Summarize(HistoryJobResult r) => new(
+        r.ReportPath, r.CaseFolder, r.Scan.Profiles.Count, r.Scan.Visits.Count, r.Scan.Searches.Count, r.Scan.Downloads.Count,
+        r.Scan.Visits.Count(v => v.Origin != Origin.Live), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count);
+
+    /// <summary>0 when everything was read, 1 (partial) when anything was skipped with a warning.</summary>
+    public static int ExitCode(HistoryJobResult r) =>
+        r.Scan.Warnings.Count + r.FolderWarnings.Count > 0 ? PCPorter.Core.Cli.ExitCodes.Partial : PCPorter.Core.Cli.ExitCodes.Ok;
 }
+
+public sealed record HistorySummary(string Report, string CaseFolder, int Profiles, int Visits, int Searches, int Downloads,
+    int Recovered, int Notes, int Warnings);

@@ -29,6 +29,7 @@ public partial class App : Application
             var elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
             var code = CliApp.Run(e.Args, elevated,
                 ThumbsCommand.Create((s, p) => PCPorter.Reports.GalleryJobFactory.Options(s, elevated, p)),
+                HistoryCommand.Create(elevated),
                 ScanCommand.Create(elevated),
                 SelfTestCommand.Create(elevated));
             Log.Information("CLI command {Command} exited with {Code}", e.Args[0], code);   // arguments may hold secrets: never log them
