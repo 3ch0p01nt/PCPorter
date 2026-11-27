@@ -12,5 +12,33 @@
     <NuGetAuditMode>all</NuGetAuditMode>
     <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
     <Version>0.1.0</Version>
+    <!-- The SDK would append the full commit hash itself; PCPorterStampVersion below writes a shorter, dated form. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
+
+  <!--
+    InformationalVersion = <Version>+<commit date yyyyMMdd>.<short commit hash>[.dirty], e.g. 0.1.0+20261127.208e9bd.
+    The commit date (not the build date) keeps builds of one commit identical (Deterministic). ".dirty" means tracked
+    files had uncommitted changes. Without git (or outside a repository) it stays plain <Version>. A value passed on the
+    command line (-p:InformationalVersion=...) wins. In Exec, %25%25 is "%%" for the batch file, i.e. a literal "%".
+  -->
+  <Target Name="PCPorterStampVersion" BeforeTargets="GetAssemblyVersion" Condition="'$(InformationalVersion)' == ''">
+    <Exec Command="git log -1 --format=%25%25cd.%25%25h --date=format:%25%25Y%25%25m%25%25d" WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low"
+          StandardErrorImportance="low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_PcpCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_PcpCommitExit" />
+    </Exec>
+    <Exec Command="git status --porcelain --untracked-files=no" WorkingDirectory="$(MSBuildThisFileDirectory)"
+          Condition="'$(_PcpCommitExit)' == '0'"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low"
+          StandardErrorImportance="low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_PcpDirty" />
+      <Output TaskParameter="ExitCode" PropertyName="_PcpDirtyExit" />
+    </Exec>
+    <PropertyGroup Condition="'$(_PcpCommitExit)' == '0' and '$(_PcpCommit)' != ''">
+      <InformationalVersion>$(Version)+$(_PcpCommit.Trim())</InformationalVersion>
+      <InformationalVersion Condition="'$(_PcpDirtyExit)' == '0' and '$(_PcpDirty.Trim())' != ''">$(InformationalVersion).dirty</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 </Project>
