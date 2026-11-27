@@ -39,6 +39,7 @@ public static class ChromiumHistoryReader
         var searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
         var downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
         var warnings = new List<string>();
+        visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, conn, DateTimeOffset.UtcNow, ct)));
         var bookmarks = Part(profile, "bookmarks", warnings, () => ChromiumBookmarks.Read(profile));
         var tabs = Part(profile, "open and recently closed tabs", warnings, () => ChromiumSessions.Read(profile, notes));
         var forms = Part(profile, "saved form entries", warnings, () => ChromiumWebData.Read(profile, workFolder, notes, ct));
@@ -52,6 +53,23 @@ public static class ChromiumHistoryReader
         catch (Exception e) when (e is not OperationCanceledException)
         {
             warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: the {what} could not be read: {e.Message.Split('\n')[0].Trim()}");
+            return [];
+        }
+    }
+
+    /// <summary>Recovers deleted visits from the copy's raw bytes; a failure there is a warning, never the end of the profile.</summary>
+    internal static IReadOnlyList<Visit> Carve(BrowserProfile profile, DbSnapshot snap, List<string> notes, List<string> warnings, Func<SqliteCarver.Result> carve)
+    {
+        notes.AddRange(snap.Warnings.Select(w => $"{profile.Browser} ({profile.Name}) for {profile.User}: {w}"));
+        try
+        {
+            var r = carve();
+            SqliteCarver.Describe(profile, r, notes);
+            return r.Visits;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: deleted history could not be searched: {e.Message.Split('\n')[0].Trim()}");
             return [];
         }
     }

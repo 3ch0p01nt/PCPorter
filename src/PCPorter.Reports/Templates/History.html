@@ -80,7 +80,7 @@
   <div class="meta" id="meta"></div>
   <nav aria-label="Sections">
     <button data-go="s-coverage">Coverage</button><button data-go="s-charts">Charts</button><button data-go="s-visits">Visits</button>
-    <button data-go="s-searches">Searches</button><button data-go="s-downloads">Downloads</button><button data-go="s-more">Bookmarks, tabs, forms</button>
+    <button data-go="s-recovered">Recovered</button><button data-go="s-searches">Searches</button><button data-go="s-downloads">Downloads</button><button data-go="s-more">Bookmarks, tabs, forms</button>
     <button data-go="s-method">Method and limits</button>
   </nav>
   <div class="spacer"></div>
@@ -122,6 +122,16 @@
     </div>
     <div id="visits"></div>
     <dl class="detail" id="visit-detail" hidden></dl>
+  </section>
+
+  <section id="s-recovered">
+    <h2>Recovered history</h2>
+    <p class="muted" style="margin-top:0">Visits that are no longer in the browser's history list: found in deleted space inside the history file
+      (left behind when history was cleared or expired) or in older copies of the file kept in restore points. Their address and time
+      come from the deleted data; how the page was opened is known only when the visit itself was recovered ("Other" otherwise).</p>
+    <div class="card"><table class="plain" id="recovered-summary"><thead><tr><th>Account</th><th>Browser</th><th>Profile</th><th>Recovered (deleted)</th><th>Recovered (restore point)</th></tr></thead><tbody></tbody></table></div>
+    <div id="recovered" style="margin-top:12px"></div>
+    <dl class="detail" id="recovered-detail" hidden></dl>
   </section>
 
   <section id="s-searches">
@@ -243,7 +253,8 @@
   if (hf) $("from").value = hf;
   if (ht) $("to").value = ht;
   let fromS = filterFrom(), toS = filterTo(), visitTable = null, ready = false;
-  visitTable = vtable($("visits"), [
+  const originOf = v => (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` (${S[v[7]]})` : "");
+  const visitColumns = [
     { label: "When", get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "11.5rem", descFirst: true },
     { label: "Title", get: v => v[2] >= 0 ? S[v[2]] : "", width: "minmax(0,1.3fr)", filter: true },
     { label: "Address", get: v => S[v[1]], width: "minmax(0,2fr)", filter: true },
@@ -251,14 +262,27 @@
     { label: "Time on page", get: v => v[5], text: v => dur(v[5]), width: "7rem" },
     { label: "Browser", get: v => profText(v[0]), width: "11rem", filter: "select" },
     { label: "Account", get: v => prof(v[0]).user, width: "7rem", filter: "select" },
-    { label: "Origin", get: v => (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` (${S[v[7]]})` : ""), width: "10rem", filter: "select", cls: "" },
-  ], visits, {
+    { label: "Origin", get: originOf, width: "10rem", filter: "select", cls: "" },
+  ];
+  const visitDetail = dl => v => showDetail(dl, [["Address", S[v[1]], true], ["Title", v[2] >= 0 ? S[v[2]] : ""], ["When", `${fmt(v[3])} (UTC ${utc(v[3])})`],
+    ["How", howText[HOW[v[4]]] || HOW[v[4]]], ["Browser", `${profText(v[0])} (${prof(v[0]).user})`], ["Origin", (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` - ${S[v[7]]}` : "")]]);
+  visitTable = vtable($("visits"), visitColumns, visits, {
     name: "Visits", sort: 0, desc: true, height: 560, placeholder: "Search addresses, titles, browsers...",
     filter: v => (fromS == null || v[3] >= fromS) && (toS == null || v[3] < toS),
-    onSelect: v => showDetail($("visit-detail"), [["Address", S[v[1]], true], ["Title", v[2] >= 0 ? S[v[2]] : ""], ["When", `${fmt(v[3])} (UTC ${utc(v[3])})`],
-      ["How", howText[HOW[v[4]]] || HOW[v[4]]], ["Browser", `${profText(v[0])} (${prof(v[0]).user})`], ["Origin", (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` - ${S[v[7]]}` : "")]]),
+    onSelect: visitDetail($("visit-detail")),
     onChange: () => { if (ready) hashState.set({ q: visitTable.query(), from: $("from").value, to: $("to").value }); },
   });
+
+  // Recovered history: per profile counts and the recovered visits on their own
+  const recoveredVisits = visits.filter(v => ORG[v[6]] !== "Live");
+  const perProfile = new Map();
+  for (const v of recoveredVisits) { const c = perProfile.get(v[0]) || { Carved: 0, RestorePoint: 0 }; c[ORG[v[6]]] = (c[ORG[v[6]]] || 0) + 1; perProfile.set(v[0], c); }
+  const recBody = $("recovered-summary").tBodies[0];
+  if (!perProfile.size) recBody.append(el("tr", {}, [el("td", { colSpan: 5, className: "muted", textContent: "Nothing was recovered: no deleted visits were found in the history files" + (data.notes.some(n => /restore point/i.test(n)) ? " (see the notes about restore points)." : " or restore points.") })]));
+  [...perProfile].sort((a, b) => coll.compare(profText(a[0]), profText(b[0]))).forEach(([p, c]) => recBody.append(el("tr", {},
+    [prof(p).user, prof(p).browser, prof(p).name, (c.Carved || 0).toLocaleString(), (c.RestorePoint || 0).toLocaleString()].map(t => el("td", { textContent: t })))));
+  vtable($("recovered"), visitColumns, recoveredVisits, { name: "Recovered visits", sort: 0, desc: true, height: 360,
+    emptyText: "No recovered visits.", onSelect: visitDetail($("recovered-detail")) });
   function applyDates() { fromS = filterFrom(); toS = filterTo(); visitTable.refresh(); }
   $("from").addEventListener("change", applyDates); $("to").addEventListener("change", applyDates);
   $("clear").onclick = () => { $("from").value = ""; $("to").value = ""; fromS = toS = null; visitTable.setQuery(""); };

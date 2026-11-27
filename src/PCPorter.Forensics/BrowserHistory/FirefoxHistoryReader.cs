@@ -66,6 +66,8 @@ public static class FirefoxHistoryReader
             searches = ChromiumHistoryReader.MergeSearches([], urlSearches);
             bookmarks = ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(conn, profile));
             downloads = ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(conn, profile, stillOnDisk, notes, ct));
+            visits.AddRange(ChromiumHistoryReader.Carve(profile, snap, notes, warnings,
+                () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, conn, DateTimeOffset.UtcNow, ct)));
         }
         var forms = ChromiumHistoryReader.Part(profile, "saved form entries", warnings, () => ReadForms(profile, workFolder, notes, ct));
         var tabs = ChromiumHistoryReader.Part(profile, "open and recently closed tabs", warnings, () => ReadSession(profile, notes));

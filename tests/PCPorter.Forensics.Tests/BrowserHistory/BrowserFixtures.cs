@@ -59,14 +59,19 @@ internal sealed class ChromiumFixture : IDisposable
     readonly Microsoft.Data.Sqlite.SqliteConnection _conn;
     public string Path { get; }
 
-    public ChromiumFixture(string profileFolder)
+    /// <param name="pragmas">Run before the schema, e.g. "PRAGMA page_size=65536; PRAGMA secure_delete=ON;".</param>
+    public ChromiumFixture(string profileFolder, string pragmas = "PRAGMA secure_delete=OFF;")
     {
         Directory.CreateDirectory(profileFolder);
         Path = System.IO.Path.Combine(profileFolder, "History");
         _conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path};Pooling=False");
         _conn.Open();
+        Exec(pragmas);
         Exec(Schema);
     }
+
+    /// <summary>Runs any statement (deletes, pragmas) on the fixture's open connection.</summary>
+    public void Sql(string sql) => Exec(sql);
 
     long Exec(string sql, params (string Name, object? Value)[] args)
     {
@@ -133,14 +138,18 @@ internal sealed class FirefoxFixture : IDisposable
     readonly Microsoft.Data.Sqlite.SqliteConnection _places;
     public string Folder { get; }
 
-    public FirefoxFixture(string profileFolder)
+    public FirefoxFixture(string profileFolder, string pragmas = "PRAGMA secure_delete=OFF;")
     {
         Folder = profileFolder;
         Directory.CreateDirectory(profileFolder);
         _places = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(profileFolder, "places.sqlite")};Pooling=False");
         _places.Open();
+        Exec(_places, pragmas);
         Exec(_places, PlacesSchema);
     }
+
+    /// <summary>Runs any statement on places.sqlite's open connection.</summary>
+    public void Sql(string sql) => Exec(_places, sql);
 
     public static long PrTime(DateTimeOffset t) => t.ToUnixTimeMilliseconds() * 1000;
 

@@ -208,6 +208,40 @@ public sealed class HistoryJobTests : IDisposable
     }
 
     [Fact]
+    public void Deleted_visits_reach_the_report_and_case_rows_marked_as_recovered()
+    {
+        var bob = Path.Combine(_drive, "Users", "bob");
+        ChromeHistory(Path.Combine(bob, @"AppData\Local\Google\Chrome\User Data\Default"), c =>
+        {
+            Sql(c, "PRAGMA secure_delete=OFF");
+            for (int i = 1; i <= 6; i++)
+            {
+                Sql(c, $"INSERT INTO urls(id, url, title, last_visit_time) VALUES ({i}, 'https://site{i}.example/page', 'Site {i}', {WebKit(T0.AddMinutes(i))})");
+                Sql(c, $"INSERT INTO visits(url, visit_time, transition) VALUES ({i}, {WebKit(T0.AddMinutes(i))}, {0x30000001})");
+            }
+            Sql(c, "DELETE FROM visits WHERE url IN (2, 3); DELETE FROM urls WHERE id IN (2, 3);");
+        });
+        using var source = new FakeSystemSource(_drive, users: [new UserProfile("S-1-5-21-1-2-3-1001", "bob", bob, null, @"C:\Users\bob")]);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+
+        var recovered = r.Scan.Visits.Where(v => v.Origin == Origin.Carved).ToList();
+        Assert.Equal(["https://site2.example/page", "https://site3.example/page"], recovered.Select(v => v.Url));
+        Assert.Equal([T0.AddMinutes(2), T0.AddMinutes(3)], recovered.Select(v => v.When));
+        Assert.Equal(4, r.Scan.Coverage.Single().Visits);                // coverage is what the browser itself still keeps
+        Assert.Equal(2, HistoryJob.Summarize(r).Recovered);
+        Assert.Contains(r.Scan.Notes, n => n.Contains("2 deleted visits were recovered"));
+
+        using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
+        var row = db.Search("site2.example").Single(a => a.Category == "WebHistory.Visit");
+        Assert.Contains("\"Origin\":\"Carved\"", row.Detail);
+        Assert.Contains("\"OriginNote\":\"free space\"", row.Detail);
+        var live = db.Search("site1.example").Single(a => a.Category == "WebHistory.Visit");
+        Assert.Contains("\"Origin\":\"Live\"", live.Detail);
+        Assert.Contains("id=\"s-recovered\"", File.ReadAllText(r.ReportPath));
+    }
+
+    [Fact]
     public void Live_runs_read_only_the_current_account_unless_all_users_is_set()
     {
         using var offline = Source();

@@ -71,8 +71,9 @@ public static class HistoryJob
                             visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
                             bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
                             warnings.AddRange(h.Warnings);
-                            coverage.Add(new ProfileCoverage(profile, h.Visits.Count,
-                                h.Visits.Count == 0 ? null : h.Visits.Min(v => v.When), h.Visits.Count == 0 ? null : h.Visits.Max(v => v.When),
+                            var liveVisits = h.Visits.Where(v => v.Origin == Origin.Live).ToList();      // how far back the browser itself keeps
+                            coverage.Add(new ProfileCoverage(profile, liveVisits.Count,
+                                liveVisits.Count == 0 ? null : liveVisits.Min(v => v.When), liveVisits.Count == 0 ? null : liveVisits.Max(v => v.When),
                                 profile.Family == BrowserFamily.Firefox ? FirefoxRetention : ChromiumRetention));
                         }
                         catch (Exception ex) when (ex is not OperationCanceledException)
