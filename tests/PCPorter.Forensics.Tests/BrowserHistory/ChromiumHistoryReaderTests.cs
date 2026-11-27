@@ -58,6 +58,72 @@ public class ChromiumHistoryReaderTests
         finally { BrowserFixtures.Delete(dir); }
     }
 
+    [Fact]
+    public void Reads_searches_from_the_terms_table_and_from_addresses_without_duplicates()
+    {
+        var dir = BrowserFixtures.TempDir();
+        try
+        {
+            var folder = Path.Combine(dir, "Default");
+            var profile = new BrowserProfile("bob", "Microsoft Edge", BrowserFamily.Chromium, "Default", folder);
+            using (var f = new ChromiumFixture(folder))
+            {
+                var g = f.Url("https://www.google.com/search?q=cheap+flights", "cheap flights - Google", lastVisit: T0.AddMinutes(10));
+                f.Visit(g, T0, ChainStart | ChainEnd | 1);
+                f.Visit(g, T0.AddMinutes(10), ChainStart | ChainEnd | 1);
+                f.SearchTerm(g, "Cheap Flights");
+                f.Visit(f.Url("https://www.bing.com/search?q=weather+today"), T0.AddMinutes(20), ChainStart | ChainEnd | 0);
+                var odd = f.Url("https://intranet.example/find?x=1", lastVisit: T0.AddMinutes(30));
+                f.SearchTerm(odd, "api_key=hunter2");
+            }
+
+            var searches = ChromiumHistoryReader.Read(profile, Path.Combine(dir, "work-1")).Searches;
+
+            Assert.Equal(
+            [
+                new Search(profile, "cheap flights", "Google", T0),
+                new Search(profile, "Cheap Flights", "Google", T0.AddMinutes(10)),
+                new Search(profile, "weather today", "Bing", T0.AddMinutes(20)),
+                new Search(profile, "api_key=***", "intranet.example", T0.AddMinutes(30)),
+            ], searches);
+        }
+        finally { BrowserFixtures.Delete(dir); }
+    }
+
+    [Fact]
+    public void Reads_downloads_with_their_first_address_and_whether_the_file_is_still_there()
+    {
+        var dir = BrowserFixtures.TempDir();
+        try
+        {
+            var folder = Path.Combine(dir, "Default");
+            var profile = new BrowserProfile("bob", "Google Chrome", BrowserFamily.Chromium, "Default", folder);
+            using (var f = new ChromiumFixture(folder))
+            {
+                f.Download(@"C:\Users\bob\Downloads\setup.exe", T0, 1000, 1000, 1, "https://vendor.example/download", "https://vendor.example/",
+                    "https://vendor.example/get?id=1", "https://cdn.vendor.example/setup.exe");
+                f.Download(@"C:\Users\bob\Downloads\big.iso", T0.AddHours(1), 50, 9000, 4, "", "https://isos.example/page",
+                    "https://isos.example/big.iso?sig=secret");
+                f.Download(@"C:\Users\bob\Downloads\old.zip", T0.AddHours(2), 0, 10, 2, "", "");
+            }
+            var asked = new List<string>();
+            bool? OnDisk(string path) { asked.Add(path); return path.EndsWith("setup.exe") ? true : path.EndsWith("old.zip") ? null : false; }
+
+            var downloads = ChromiumHistoryReader.Read(profile, Path.Combine(dir, "work-2"), OnDisk).Downloads;
+
+            Assert.Equal(
+            [
+                new Download(profile, "https://vendor.example/get?id=1", "https://vendor.example/download", @"C:\Users\bob\Downloads\setup.exe",
+                    T0, 1000, DownloadState.Complete, true),
+                new Download(profile, "https://isos.example/big.iso?sig=***", "https://isos.example/page", @"C:\Users\bob\Downloads\big.iso",
+                    T0.AddHours(1), 50, DownloadState.Interrupted, false),
+                new Download(profile, "", null, @"C:\Users\bob\Downloads\old.zip", T0.AddHours(2), 0, DownloadState.Cancelled, null),
+            ], downloads);
+            Assert.Equal(3, asked.Count);
+        }
+        finally { BrowserFixtures.Delete(dir); }
+    }
+
     [Theory]
     [InlineData(0u, VisitHow.Link)]
     [InlineData(1u, VisitHow.Typed)]
