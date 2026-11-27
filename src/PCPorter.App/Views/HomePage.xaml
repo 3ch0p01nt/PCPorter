@@ -16,7 +16,7 @@
       <ui:CardAction Margin="6,0" Icon="{ui:SymbolIcon History24}" AutomationProperties.Name="Explore my PC's history" Click="History_Click">
         <StackPanel>
           <TextBlock Text="Explore my PC's history" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="Web history, viewed images, and everything this PC has logged."
+          <TextBlock Text="Websites visited, searches and downloads (even deleted ones), and the images viewed, on this PC or an old PC's drive."
                      TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
         </StackPanel>
       </ui:CardAction>

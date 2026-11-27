@@ -1,7 +1,6 @@
 using System.CommandLine;
 using System.IO;
 using System.Text.Json;
-using PCPorter.Collectors.Sources;
 using PCPorter.Core.Case;
 using PCPorter.Core.Cli;
 using PCPorter.Core.Security;
@@ -39,17 +38,9 @@ public static class HistoryCommand
             Console.CancelKeyPress += onCancel;
             try
             {
-                var offlineRoot = parse.GetValue(offline)?.FullName;
-                using ISystemSource source = offlineRoot is null ? new LiveSource() : new OfflineSource(offlineRoot);
-                var notes = new List<string>();
-                bool all = parse.GetValue(allUsers);
-                if (all && source.IsLive && !elevated)
-                {
-                    notes.Add("PCPorter is not running as administrator, so only your own account was read. Run it as administrator to include the other accounts (ask them first).");
-                    all = false;
-                }
-                var options = new HistoryJobOptions(all, !parse.GetValue(noRestore), notes);
-                var r = HistoryJob.Run(parse.GetValue(outOpt)!.FullName, source, options, new ConsoleProgress(!json), ct: cts.Token);
+                var request = new HistoryRequest(parse.GetValue(outOpt)!.FullName, parse.GetValue(offline)?.FullName,
+                    parse.GetValue(allUsers), !parse.GetValue(noRestore));
+                var r = HistorySetup.Run(request, elevated, new ConsoleProgress(!json), ct: cts.Token);
                 var s = HistoryJob.Summarize(r);
                 var code = HistoryJob.ExitCode(r);
                 Console.WriteLine(json ? JsonSerializer.Serialize(new { summary = s, exitCode = code }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) :

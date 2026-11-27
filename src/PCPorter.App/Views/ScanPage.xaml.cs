@@ -27,12 +27,6 @@ public partial class ScanPage : Page
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    /// <summary>A drive in the picker. Locked (BitLocker) drives are listed but can't be picked until unlocked.</summary>
-    public sealed record DriveChoice(string Root, string Label, bool Usable)
-    {
-        public override string ToString() => Label;
-    }
-
     readonly ObservableCollection<Card> _cards = [];
     readonly bool _elevated = AppFolders.IsElevated;
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -44,7 +38,7 @@ public partial class ScanPage : Page
     {
         InitializeComponent();
         Cards.ItemsSource = _cards;
-        OutFolder.Text = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.DriveType == DriveType.Removable)?.RootDirectory.FullName ?? @"C:\PCPorterCases";
+        OutFolder.Text = WindowsDrives.SuggestedSaveFolder();
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
         Loaded += async (_, _) => await RefreshDrives();
     }
@@ -53,33 +47,10 @@ public partial class ScanPage : Page
     async Task RefreshDrives()
     {
         DriveHint.Text = "Looking for drives...";
-        var candidates = await Task.Run(FindWindowsDrives);
+        var candidates = await Task.Run(WindowsDrives.Find);
         Drives.ItemsSource = candidates;
         Drives.SelectedItem = candidates.FirstOrDefault(c => c.Usable);
-        DriveHint.Text = candidates.Count == 0
-            ? "No other Windows drive found. Connect the old PC's drive (for example with a USB adapter) and press Refresh."
-            : candidates.Any(c => !c.Usable)
-                ? "A locked drive was found. Unlock it in File Explorer with its BitLocker recovery key (aka.ms/myrecoverykey), then press Refresh."
-                : "Before plugging in an old drive, PCPorter can set Windows not to write to it - see Help.";
-    }
-
-    static List<DriveChoice> FindWindowsDrives()
-    {
-        var running = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-        var list = new List<DriveChoice>();
-        foreach (var d in DriveInfo.GetDrives())
-        {
-            var root = d.RootDirectory.FullName;
-            if (string.Equals(root, running, StringComparison.OrdinalIgnoreCase) || d.DriveType is not (DriveType.Fixed or DriveType.Removable)) continue;
-            try
-            {
-                if (!d.IsReady) { list.Add(new(root, $"{root} (locked or not ready)", false)); continue; }
-                if (File.Exists(Path.Combine(root, "Windows", "System32", "config", "SOFTWARE")))
-                    list.Add(new(root, string.IsNullOrWhiteSpace(d.VolumeLabel) ? root : $"{root} ({d.VolumeLabel})", true));
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { list.Add(new(root, $"{root} (can't be read)", false)); }
-        }
-        return list;
+        DriveHint.Text = WindowsDrives.Hint(candidates);
     }
 
     async void RefreshDrives_Click(object sender, RoutedEventArgs e) => await RefreshDrives();

@@ -1,0 +1,60 @@
+<Page x:Class="PCPorter.App.Views.HistoryPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Web history">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" MaxWidth="900" HorizontalAlignment="Left">
+      <TextBlock Text="Web history" FontSize="28" FontWeight="SemiBold" />
+      <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,8"
+                 Text="Builds a private report of the websites visited, searches, downloads, bookmarks, open tabs and saved form entries in Chrome, Edge, Brave, Opera, Vivaldi, Firefox and Internet Explorer, including deleted visits that can still be recovered. Saved passwords, cookies and payment cards are never read. Nothing on the PC is changed." />
+      <TextBlock Margin="0,0,0,16">
+        <Run Text="Looking for pictures instead?" />
+        <Hyperlink Click="Images_Click" AutomationProperties.Name="Go to Images viewed"
+                   AutomationProperties.HelpText="Opens the page that builds a gallery of images viewed on this PC">Go to Images viewed</Hyperlink>
+      </TextBlock>
+
+      <StackPanel x:Name="Inputs">
+        <TextBlock Text="Whose history" FontWeight="SemiBold" />
+        <RadioButton x:Name="ThisPc" GroupName="Src" IsChecked="True" Margin="0,6,0,0" Content="This PC" />
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+          <RadioButton x:Name="OtherDrive" GroupName="Src" Content="Another PC's drive (old PC that won't start):" VerticalAlignment="Center" />
+          <ComboBox x:Name="Drives" Margin="8,0,0,0" MinWidth="200" IsEnabled="{Binding IsChecked, ElementName=OtherDrive}" AutomationProperties.Name="Drive with the other PC's Windows" />
+          <ui:Button Margin="8,0,0,0" Content="Refresh" Click="RefreshDrives_Click" ToolTip="Look again for connected drives that hold Windows"
+                     AutomationProperties.Name="Refresh the list of drives" />
+        </StackPanel>
+        <TextBlock x:Name="DriveHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,4,0,12" />
+
+        <CheckBox x:Name="AllUsers" Content="Also include the other accounts on this PC (only with their permission)"
+                  AutomationProperties.Name="Also include the other accounts on this PC" />
+        <CheckBox x:Name="RestorePoints" Margin="0,6,0,0" IsChecked="True" Content="Look for older history in existing restore points"
+                  AutomationProperties.Name="Look for older history in existing restore points" />
+        <TextBlock x:Name="AdminHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,4,0,16" />
+
+        <TextBlock Text="Save the report to" FontWeight="SemiBold" />
+        <Grid Margin="0,6,0,4">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+          <ui:TextBox x:Name="OutFolder" AutomationProperties.Name="Folder to save the report in" />
+          <ui:Button Grid.Column="1" Margin="8,0,0,0" Content="Browse..." Click="Browse_Click" AutomationProperties.Name="Browse for the folder to save the report in" />
+        </Grid>
+        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,16"
+                   Text="Use the backup drive or a local folder. Cloud-synced folders (OneDrive, Dropbox, Google Drive) are refused because the report holds private browsing history." />
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal">
+        <ui:Button x:Name="StartButton" Appearance="Primary" Content="Build the report" Icon="{ui:SymbolIcon History24}" Click="Start_Click"
+                   AutomationProperties.Name="Build the web history report" />
+        <ui:Button x:Name="CancelButton" Margin="8,0,0,0" Content="Cancel" IsEnabled="False" Click="Cancel_Click" />
+      </StackPanel>
+
+      <ProgressBar x:Name="Busy" IsIndeterminate="True" Margin="0,16,0,0" Visibility="Collapsed" AutomationProperties.Name="Working" />
+      <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+
+      <ui:InfoBar x:Name="Result" Margin="0,16,0,0" IsOpen="False" IsClosable="False" />
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <ui:Button x:Name="OpenReport" Content="Open the report" Icon="{ui:SymbolIcon Open24}" Visibility="Collapsed" Click="OpenReport_Click" />
+        <ui:Button x:Name="OpenFolder" Margin="8,0,0,0" Content="Open the case folder" Icon="{ui:SymbolIcon FolderOpen24}" Visibility="Collapsed" Click="OpenFolder_Click" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Page>

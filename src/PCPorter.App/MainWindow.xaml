@@ -21,6 +21,11 @@
             <ui:SymbolIcon Symbol="Home24" />
           </ui:NavigationViewItem.Icon>
         </ui:NavigationViewItem>
+        <ui:NavigationViewItem Content="Web history" TargetPageType="{x:Type views:HistoryPage}">
+          <ui:NavigationViewItem.Icon>
+            <ui:SymbolIcon Symbol="History24" />
+          </ui:NavigationViewItem.Icon>
+        </ui:NavigationViewItem>
         <ui:NavigationViewItem Content="Images viewed" TargetPageType="{x:Type views:ThumbsPage}">
           <ui:NavigationViewItem.Icon>
             <ui:SymbolIcon Symbol="Image24" />

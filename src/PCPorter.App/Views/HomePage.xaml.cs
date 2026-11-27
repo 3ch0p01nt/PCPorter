@@ -7,8 +7,9 @@ public partial class HomePage : Page
 {
     public HomePage() => InitializeComponent();
 
+    /// <summary>Opens Web history; that page links to Images viewed.</summary>
     void History_Click(object sender, RoutedEventArgs e) =>
-        (Application.Current.MainWindow as MainWindow)?.Nav.Navigate(typeof(ThumbsPage));
+        (Application.Current.MainWindow as MainWindow)?.Nav.Navigate(typeof(HistoryPage));
 
     /// <summary>Backup and restore are not built yet: say so plainly and point at what already helps with a move.</summary>
     void Move_Click(object sender, RoutedEventArgs e) =>
