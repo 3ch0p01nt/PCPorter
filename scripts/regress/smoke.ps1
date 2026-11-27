@@ -59,8 +59,10 @@ function Get-Fingerprint([string] $Root) {
     $map = [ordered]@{}
     Get-ChildItem -LiteralPath $Root -Recurse -Force | Sort-Object FullName | ForEach-Object {
         $rel = $_.FullName.Substring($Root.Length)
-        $map[$rel] = if ($_.PSIsContainer) { "dir $($_.LastWriteTimeUtc.ToString('o'))" }
-                     else { "$($_.Length) $($_.LastWriteTimeUtc.ToString('o')) $((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)" }
+        # Times are read from each item itself, not from the listing: a folder listing reports a subfolder's time late
+        # (NTFS updates it only once that subfolder is opened), so two listings of a fresh folder can differ.
+        $map[$rel] = if ($_.PSIsContainer) { "dir $([IO.Directory]::GetLastWriteTimeUtc($_.FullName).ToString('o'))" }
+                     else { "$([IO.FileInfo]::new($_.FullName).Length) $([IO.File]::GetLastWriteTimeUtc($_.FullName).ToString('o')) $((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)" }
     }
     $map
 }
