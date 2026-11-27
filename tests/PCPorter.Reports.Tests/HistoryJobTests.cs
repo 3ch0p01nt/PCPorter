@@ -48,6 +48,33 @@ public sealed class HistoryJobTests : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>A minimal SNSS session file: one tab navigation (command 6, a Pickle with tab id, index, url, title).</summary>
+    static byte[] SessionFile(string url)
+    {
+        var u = System.Text.Encoding.UTF8.GetBytes(url);
+        var body = new List<byte>();
+        body.AddRange(BitConverter.GetBytes(1)); body.AddRange(BitConverter.GetBytes(0));
+        body.AddRange(BitConverter.GetBytes(u.Length)); body.AddRange(u);
+        while (body.Count % 4 != 0) body.Add(0);
+        body.AddRange(BitConverter.GetBytes(0));                                  // empty title
+        byte[] pickle = [.. BitConverter.GetBytes(body.Count), .. body];
+        return [.. "SNSS"u8, 1, 0, 0, 0, .. BitConverter.GetBytes((ushort)(pickle.Length + 1)), 6, .. pickle];
+    }
+
+    /// <summary>Web Data with one ordinary autofill entry, one password field and a payment card table.</summary>
+    static void WebData(string profileFolder)
+    {
+        using var c = new SqliteConnection($"Data Source={Path.Combine(profileFolder, "Web Data")};Pooling=False");
+        c.Open();
+        Sql(c, "CREATE TABLE autofill (name VARCHAR, value VARCHAR, value_lower VARCHAR, date_created INTEGER DEFAULT 0, date_last_used INTEGER DEFAULT 0, count INTEGER DEFAULT 1, PRIMARY KEY (name, value))");
+        Sql(c, "CREATE TABLE credit_cards (guid VARCHAR PRIMARY KEY, name_on_card VARCHAR, card_number_encrypted BLOB)");
+        Sql(c, $"INSERT INTO autofill VALUES ('email', 'bob@example.com', 'bob@example.com', {T0.ToUnixTimeSeconds()}, {T0.ToUnixTimeSeconds()}, 3)");
+        Sql(c, $"INSERT INTO autofill VALUES ('password', '{Canary}', '', 0, 0, 1)");
+        Sql(c, $"INSERT INTO credit_cards VALUES ('g', '{Canary}', CAST('{Canary}' AS BLOB))");
+    }
+
+    const string Canary = "CANARY-5d1e77";
+
     FakeSystemSource Source()
     {
         var bob = Path.Combine(_drive, "Users", "bob");
@@ -62,6 +89,12 @@ public sealed class HistoryJobTests : IDisposable
             Sql(c, $"INSERT INTO downloads VALUES (1, 'g', 'C:\\Users\\bob\\Downloads\\tool.exe', 'C:\\Users\\bob\\Downloads\\tool.exe', {WebKit(T0)}, 10, 10, 1, '', 'https://example.com/')");
             Sql(c, "INSERT INTO downloads_url_chains VALUES (1, 0, 'https://example.com/tool.exe')");
         });
+        var chrome = Path.Combine(bob, @"AppData\Local\Google\Chrome\User Data\Default");
+        File.WriteAllText(Path.Combine(chrome, "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[{"type":"url","name":"Tea","url":"https://tea.example/","date_added":"13400000000000000"}]}}}""");
+        Directory.CreateDirectory(Path.Combine(chrome, "Sessions"));
+        File.WriteAllBytes(Path.Combine(chrome, "Sessions", "Session_1"), SessionFile("https://open.example/"));
+        WebData(chrome);
         Directory.CreateDirectory(Path.Combine(bob, "Downloads"));
         File.WriteAllText(Path.Combine(bob, "Downloads", "tool.exe"), "MZ");
         // A second profile whose History is damaged: it must not stop the run.
@@ -101,9 +134,29 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal(3, counts["WebHistory.Visit"]);
         Assert.Equal(1, counts["WebHistory.Search"]);
         Assert.Equal(1, counts["WebHistory.Download"]);
+        Assert.Equal(1, counts["WebHistory.Bookmark"]);
+        Assert.Equal(1, counts["WebHistory.Tab"]);
+        Assert.Equal(1, counts["WebHistory.Form"]);
         var visit = db.Search("example.com").First(a => a.Category == "WebHistory.Visit");
         Assert.Equal("Google Chrome/Default", visit.Source);
         Assert.Equal("bob", visit.User);
+    }
+
+    [Fact]
+    public void Bookmarks_tabs_and_form_entries_reach_the_report_and_secrets_reach_nothing()
+    {
+        using var source = Source();
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+
+        Assert.Equal(["https://tea.example/"], r.Scan.Bookmarks.Select(b => b.Url));
+        Assert.Equal(["https://open.example/"], r.Scan.Tabs.Select(t => t.Url));
+        Assert.Equal(["bob@example.com"], r.Scan.Forms.Select(f => f.Value));
+        var html = File.ReadAllText(r.ReportPath);
+        Assert.Contains("https://tea.example/", html);
+        Assert.Contains("https://open.example/", html);
+        Assert.Contains("bob@example.com", html);
+        foreach (var file in Directory.EnumerateFiles(r.CaseFolder, "*", SearchOption.AllDirectories))
+            Assert.DoesNotContain(Canary, System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(file)));
     }
 
     [Fact]

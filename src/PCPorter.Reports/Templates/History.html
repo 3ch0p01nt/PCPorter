@@ -152,7 +152,10 @@
       <ul>
         <li>Read from: Chromium-family browsers (Chrome, Edge, Brave, Opera, Vivaldi, Chromium). Each History file was copied together with its
           not-yet-saved changes (the write-ahead log) into the case's private work folder and read from the copy. The originals were not changed.</li>
-        <li>Never read: saved passwords, cookies, encryption keys, payment cards and bank details. Form fields that look like passwords, card or account numbers are dropped.</li>
+        <li>Also read: bookmarks, the open and recently closed tabs from the browser's session files, and saved form entries (only the browser's
+          form-history list; the form entries section stays closed until you open it).</li>
+        <li>Never read: saved passwords, cookies, encryption keys, payment cards, bank details and saved addresses. Form fields that look like
+          passwords, card, PIN or account numbers are dropped, and so are values that look like a card number.</li>
         <li>Chrome-family browsers keep about 90 days of visits; older visits are gone unless they are recovered from deleted space or a restore point.</li>
         <li>Private (InPrivate / Incognito) windows leave almost no history. A missing visit does not prove a site was never opened.</li>
         <li>Times are recorded by the browser in UTC and shown here in this computer's time zone. The CSV export contains UTC times.</li>
@@ -219,7 +222,8 @@
   for (const v of visits) { sites.add(hostOf(S[v[1]])); if (HOW[v[4]] === "Typed") typed++; if (ORG[v[6]] !== "Live") recovered++; }
   sites.delete("");
   [["Visits", visits.length], ["Different sites", sites.size], ["Typed or searched", typed], ["Searches", data.searches.length],
-   ["Downloads", data.downloads.length], ["Browser profiles", P.length], ["Recovered visits", recovered]]
+   ["Downloads", data.downloads.length], ["Bookmarks", data.bookmarks.length], ["Open tabs", data.tabs.filter(t => t.state === "Open").length],
+   ["Recently closed tabs", data.tabs.filter(t => t.state !== "Open").length], ["Browser profiles", P.length], ["Recovered visits", recovered]]
     .filter(([l, n]) => n > 0 || l === "Visits")
     .forEach(([l, n]) => $("tiles").append(el("div", { className: "tile" }, [el("div", { className: "n", textContent: n.toLocaleString() }), el("div", { className: "l", textContent: l })])));
 
@@ -335,7 +339,7 @@
   ], data.bookmarks, { name: "Bookmarks", sort: 0, desc: true, height: 300, emptyText: "No bookmarks found." });
   vtable($("tabs"), [
     { label: "State", get: t => t.state === "Open" ? "Open" : "Recently closed", width: "9rem", filter: "select" },
-    { label: "Window", get: t => t.window, width: "5rem" },
+    { label: "Window", get: t => t.window, text: t => t.window > 0 ? String(t.window) : "", width: "5rem" },
     { label: "Title", get: t => t.title, width: "minmax(0,1.3fr)", filter: true },
     { label: "Address", get: t => t.url, width: "minmax(0,2fr)", filter: true },
     { label: "Last active", get: t => t.t, text: t => fmt(t.t), csv: t => utc(t.t), width: "11.5rem" },

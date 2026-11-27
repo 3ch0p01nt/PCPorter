@@ -66,6 +66,7 @@ public static class HistoryJob
                             var h = ChromiumHistoryReader.Read(profile, work, path => StillOnDisk(source, path), ct);
                             visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
                             bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
+                            warnings.AddRange(h.Warnings);
                             coverage.Add(new ProfileCoverage(profile, h.Visits.Count,
                                 h.Visits.Count == 0 ? null : h.Visits.Min(v => v.When), h.Visits.Count == 0 ? null : h.Visits.Max(v => v.When), ChromiumRetention));
                         }

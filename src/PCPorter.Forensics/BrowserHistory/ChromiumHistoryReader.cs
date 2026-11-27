@@ -5,8 +5,9 @@ using PCPorter.Core.Time;
 namespace PCPorter.Forensics.BrowserHistory;
 
 /// <summary>
-/// Reads a Chromium-family profile's History database (Chrome, Edge, Brave, Opera, Vivaldi, Chromium) from a private
-/// copy. Only the history tables are queried; Login Data, Cookies and Web Data's card tables are never opened.
+/// Reads a Chromium-family profile (Chrome, Edge, Brave, Opera, Vivaldi, Chromium): the History database from a private
+/// copy, the Bookmarks file, the session files and Web Data's autofill table. Login Data and Cookies are never opened,
+/// and Web Data's card, IBAN and address tables are never read.
 /// </summary>
 public static class ChromiumHistoryReader
 {
@@ -37,7 +38,22 @@ public static class ChromiumHistoryReader
         var notes = new List<string>();
         var searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
         var downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
-        return ProfileHistory.Empty with { Visits = visits, Searches = searches, Downloads = downloads, Notes = notes };
+        var warnings = new List<string>();
+        var bookmarks = Part(profile, "bookmarks", warnings, () => ChromiumBookmarks.Read(profile));
+        var tabs = Part(profile, "open and recently closed tabs", warnings, () => ChromiumSessions.Read(profile, notes));
+        var forms = Part(profile, "saved form entries", warnings, () => ChromiumWebData.Read(profile, workFolder, notes, ct));
+        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings };
+    }
+
+    /// <summary>Reads one optional part of a profile; if it fails, the rest of the profile is still shown.</summary>
+    internal static List<T> Part<T>(BrowserProfile profile, string what, List<string> warnings, Func<List<T>> read)
+    {
+        try { return read(); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: the {what} could not be read: {e.Message.Split('\n')[0].Trim()}");
+            return [];
+        }
     }
 
     static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct)

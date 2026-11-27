@@ -36,6 +36,9 @@ public sealed record ProfileHistory(
     IReadOnlyList<Bookmark> Bookmarks, IReadOnlyList<OpenTab> Tabs, IReadOnlyList<FormEntry> Forms, IReadOnlyList<string> Notes)
 {
     public static ProfileHistory Empty { get; } = new([], [], [], [], [], [], []);
+
+    /// <summary>Parts of the profile that could not be read (the rest was).</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
 }
 
 /// <summary>Everything found for a web history report.</summary>

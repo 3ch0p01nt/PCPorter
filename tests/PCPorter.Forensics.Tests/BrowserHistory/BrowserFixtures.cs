@@ -102,3 +102,94 @@ internal sealed class ChromiumFixture : IDisposable
 
     public void Dispose() => _conn.Dispose();
 }
+
+/// <summary>Builds a Chromium SNSS session file (Session_* or Tabs_*) command by command.</summary>
+internal sealed class SnssBuilder
+{
+    readonly MemoryStream _ms = new();
+
+    public SnssBuilder(int version = 1)
+    {
+        _ms.Write("SNSS"u8);
+        _ms.Write(BitConverter.GetBytes(version));
+    }
+
+    public SnssBuilder Command(byte id, byte[] payload)
+    {
+        _ms.Write(BitConverter.GetBytes(checked((ushort)(payload.Length + 1))));
+        _ms.WriteByte(id);
+        _ms.Write(payload);
+        return this;
+    }
+
+    /// <summary>Raw bytes, e.g. a record header that promises more than the file holds.</summary>
+    public SnssBuilder Raw(params byte[] bytes) { _ms.Write(bytes); return this; }
+
+    public SnssBuilder Navigation(int tab, int index, string url, string title, byte id = 6) => Command(id, Pickle(tab, index, url, title));
+    public SnssBuilder TabWindow(int window, int tab) => Command(0, Ints(window, tab));
+    public SnssBuilder Selected(int tab, int index) => Command(7, Ints(tab, index));
+    public SnssBuilder TabClosed(int tab, DateTimeOffset when) => Command(16, IdTime(tab, when));
+    public SnssBuilder WindowClosed(int window, DateTimeOffset when) => Command(17, IdTime(window, when));
+    public SnssBuilder LastActive(int tab, DateTimeOffset when) => Command(21, IdTime(tab, when));
+    /// <summary>Tabs_ file: which navigation of a closed tab was showing, and when it was closed.</summary>
+    public SnssBuilder RestoreSelected(int tab, int index, DateTimeOffset closed) =>
+        Command(4, [.. BitConverter.GetBytes(tab), .. BitConverter.GetBytes(index), .. BitConverter.GetBytes(BrowserFixtures.WebKit(closed))]);
+
+    public byte[] Bytes() => _ms.ToArray();
+
+    static byte[] Ints(params int[] values) => values.SelectMany(BitConverter.GetBytes).ToArray();
+
+    static byte[] IdTime(int id, DateTimeOffset when) => [.. BitConverter.GetBytes(id), 0, 0, 0, 0, .. BitConverter.GetBytes(BrowserFixtures.WebKit(when))];
+
+    /// <summary>Pickle: uint32 payload size, int32 tab, int32 index, string url, string16 title, then more fields (here: an empty state).</summary>
+    static byte[] Pickle(int tab, int index, string url, string title)
+    {
+        var body = new MemoryStream();
+        void Pad() { while (body.Length % 4 != 0) body.WriteByte(0); }
+        body.Write(BitConverter.GetBytes(tab));
+        body.Write(BitConverter.GetBytes(index));
+        var u = Encoding.UTF8.GetBytes(url);
+        body.Write(BitConverter.GetBytes(u.Length)); body.Write(u); Pad();
+        var t = Encoding.Unicode.GetBytes(title);
+        body.Write(BitConverter.GetBytes(title.Length)); body.Write(t); Pad();
+        body.Write(BitConverter.GetBytes(0));           // encoded page state: empty
+        body.Write(BitConverter.GetBytes(0));           // transition type
+        return [.. BitConverter.GetBytes((int)body.Length), .. body.ToArray()];
+    }
+}
+
+/// <summary>Builds a Chromium "Web Data" database with the autofill table and the tables PCPorter must never read.</summary>
+internal static class WebDataFixture
+{
+    public const string Canary = "CANARY-7f3a91";
+
+    public static void Create(string profileFolder, params (string Name, string Value, int Count, long Created, long LastUsed)[] autofill)
+    {
+        Directory.CreateDirectory(profileFolder);
+        using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(profileFolder, "Web Data")};Pooling=False");
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = $"""
+            CREATE TABLE meta(key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
+            CREATE TABLE autofill (name VARCHAR, value VARCHAR, value_lower VARCHAR, date_created INTEGER DEFAULT 0, date_last_used INTEGER DEFAULT 0, count INTEGER DEFAULT 1, PRIMARY KEY (name, value));
+            CREATE TABLE credit_cards ( guid VARCHAR PRIMARY KEY, name_on_card VARCHAR, expiration_month INTEGER, expiration_year INTEGER, card_number_encrypted BLOB, date_modified INTEGER NOT NULL DEFAULT 0, origin VARCHAR DEFAULT '', use_count INTEGER NOT NULL DEFAULT 0, use_date INTEGER NOT NULL DEFAULT 0, billing_address_id VARCHAR, nickname VARCHAR);
+            CREATE TABLE masked_credit_cards (id VARCHAR, network VARCHAR, last_four VARCHAR, exp_month INTEGER DEFAULT 0, exp_year INTEGER DEFAULT 0, bank_name VARCHAR, nickname VARCHAR);
+            CREATE TABLE local_ibans (guid VARCHAR, use_count INTEGER NOT NULL DEFAULT 0, use_date INTEGER NOT NULL DEFAULT 0, value_encrypted VARCHAR, nickname VARCHAR);
+            CREATE TABLE autofill_profiles (guid VARCHAR PRIMARY KEY, label VARCHAR, date_modified INTEGER NOT NULL DEFAULT 0);
+            INSERT INTO meta VALUES ('version', '130');
+            INSERT INTO credit_cards (guid, name_on_card, expiration_month, expiration_year, card_number_encrypted, nickname) VALUES ('g1', '{Canary}', 1, 2030, CAST('{Canary}' AS BLOB), '{Canary}');
+            INSERT INTO masked_credit_cards (id, network, last_four, nickname) VALUES ('m1', 'visa', '1111', '{Canary}');
+            INSERT INTO local_ibans (guid, value_encrypted, nickname) VALUES ('i1', '{Canary}', '{Canary}');
+            INSERT INTO autofill_profiles (guid, label) VALUES ('p1', '{Canary}');
+            """;
+        cmd.ExecuteNonQuery();
+        foreach (var a in autofill)
+        {
+            cmd.CommandText = "INSERT INTO autofill VALUES ($n, $v, lower($v), $c, $l, $k)";
+            cmd.Parameters.Clear();
+            cmd.Parameters.AddWithValue("$n", a.Name); cmd.Parameters.AddWithValue("$v", a.Value);
+            cmd.Parameters.AddWithValue("$c", a.Created); cmd.Parameters.AddWithValue("$l", a.LastUsed); cmd.Parameters.AddWithValue("$k", a.Count);
+            cmd.ExecuteNonQuery();
+        }
+    }
+}

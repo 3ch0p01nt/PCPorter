@@ -25,7 +25,38 @@ public class HistoryReportTests
             visits,
             [new Search(Chrome, "cheap flights", "Google", T0)],
             [new Download(Edge, "https://vendor.example/setup.exe", "https://vendor.example/", @"C:\Users\bob\Downloads\setup.exe", T0, 1000, DownloadState.Complete, true)],
-            [], [], [], ["a note"], ["a warning"]);
+            [new Bookmark(Chrome, "Tea shop", "https://tea.example/", "Bookmarks bar/Shops", T0.AddDays(-3))],
+            [new OpenTab(Chrome, "https://open.example/", "Open", 1, TabState.Open, T0), new OpenTab(Edge, "https://gone.example/", null, 0, TabState.RecentlyClosed, null)],
+            [new FormEntry(Chrome, "email", "bob@example.com", 4, T0.AddDays(-9), T0)],
+            ["a note"], ["a warning"]);
+    }
+
+    [Fact]
+    public void Bookmarks_tabs_and_form_entries_are_embedded()
+    {
+        using var doc = EmbeddedData(HistoryReport.Render(Scan(), Meta));
+        var root = doc.RootElement;
+        var b = root.GetProperty("bookmarks")[0];
+        Assert.Equal(("Tea shop", "https://tea.example/", "Bookmarks bar/Shops", T0.AddDays(-3).ToUnixTimeSeconds()),
+            (b.GetProperty("title").GetString(), b.GetProperty("url").GetString(), b.GetProperty("folder").GetString(), b.GetProperty("t").GetInt64()));
+        var tabs = root.GetProperty("tabs");
+        Assert.Equal(2, tabs.GetArrayLength());
+        Assert.Equal(("Open", 1, T0.ToUnixTimeSeconds()), (tabs[0].GetProperty("state").GetString(), tabs[0].GetProperty("window").GetInt32(), tabs[0].GetProperty("t").GetInt64()));
+        Assert.Equal(("RecentlyClosed", 1), (tabs[1].GetProperty("state").GetString(), tabs[1].GetProperty("p").GetInt32()));
+        Assert.False(tabs[1].TryGetProperty("t", out _));
+        var f = root.GetProperty("forms")[0];
+        Assert.Equal(("email", "bob@example.com", 4, T0.ToUnixTimeSeconds()),
+            (f.GetProperty("field").GetString(), f.GetProperty("value").GetString(), f.GetProperty("count").GetInt32(), f.GetProperty("last").GetInt64()));
+    }
+
+    [Fact]
+    public void Form_entries_stay_collapsed_until_clicked()
+    {
+        var html = HistoryReport.Render(Scan(), Meta);
+        var m = Regex.Match(html, "<details[^>]*id=\"forms-box\"[^>]*>");
+        Assert.True(m.Success);
+        Assert.DoesNotContain(" open", m.Value);
+        Assert.Contains("addEventListener(\"toggle\"", html);                   // the table is built only when opened
     }
 
     static JsonDocument EmbeddedData(string html)
