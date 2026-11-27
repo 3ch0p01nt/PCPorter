@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PCPorter.Core\PCPorter.Core.csproj" />
+    <ProjectReference Include="..\PCPorter.Collectors\PCPorter.Collectors.csproj" />
   </ItemGroup>
 
   <ItemGroup>

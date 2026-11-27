@@ -121,10 +121,18 @@
         "resolved": "2026.10.1",
         "contentHash": "BswS8RU2WhjXujozTeD4/FENf8E+0XX+s5AVXATjz7dgBmmcQf6wVipD+K9jDMRfe+NMinig3i8uUkF/i2prtA=="
       },
+      "Registry": {
+        "type": "Transitive",
+        "resolved": "2026.10.1",
+        "contentHash": "vd6RmcjraQYq2lKuWEVOpqbuSfQxcQf3stmGgYmjs5iQIIjeM151aWSm145OiF/3PUsc3HXKidUFrJX0TLrshQ==",
+        "dependencies": {
+          "Serilog": "4.4.0"
+        }
+      },
       "Serilog": {
         "type": "Transitive",
-        "resolved": "4.3.1",
-        "contentHash": "savYe7h5yRlkqBVOwP8cIRDOdqKiPmYCU4W87JH38sBmcKD5EBoXvQIw6bNEvZ/pTe1gsiye3VFCzBsoppGkXQ=="
+        "resolved": "4.4.0",
+        "contentHash": "ZC6Le3rr4TVJJjS4KsQAesxeF1EhW9qcZmmG7eP5Y2G3+gTGkJEUXkq4+tZNPtyp05I0wWOxnIjwtxFweJsObw=="
       },
       "SQLite": {
         "type": "Transitive",
@@ -224,6 +232,15 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "pcporter.collectors": {
+        "type": "Project",
+        "dependencies": {
+          "Lnk": "[2026.10.11, )",
+          "PCPorter.Core": "[0.1.0, )",
+          "Registry": "[2026.10.1, )",
+          "System.Management": "[11.0.0, )"
+        }
+      },
       "pcporter.core": {
         "type": "Project",
         "dependencies": {
@@ -239,6 +256,7 @@
           "Lnk": "[2026.10.11, )",
           "Microsoft.Data.Sqlite": "[11.0.0, )",
           "Microsoft.Database.ManagedEsent": "[3.2.0, )",
+          "PCPorter.Collectors": "[0.1.0, )",
           "PCPorter.Core": "[0.1.0, )",
           "System.IO.Hashing": "[11.0.0, )"
         }
