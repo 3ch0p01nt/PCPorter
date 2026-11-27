@@ -24,27 +24,47 @@ public static class ChromiumSessions
 
     const long FileCap = 64L << 20;
 
+    /// <summary>
+    /// Reads the newest session file and the newest tabs file. A running browser may hold its current file without
+    /// sharing it; then the previous file (which Chromium keeps next to it) is read instead, with a note. Throws when
+    /// files exist but none can be read.
+    /// </summary>
     public static List<OpenTab> Read(BrowserProfile profile, List<string> notes)
     {
-        var tabs = new List<OpenTab>();
-        if (Newest(profile.Folder, "Session_", "Current Session", "Last Session") is { } session)
-            tabs.AddRange(Parse(profile, SourceFiles.ReadAllBytes(session, FileCap), restoreList: false, notes));
-        if (Newest(profile.Folder, "Tabs_", "Current Tabs", "Last Tabs") is { } closed)
-            tabs.AddRange(Parse(profile, SourceFiles.ReadAllBytes(closed, FileCap), restoreList: true, notes));
+        var tabs = ReadFirst(profile, Candidates(profile.Folder, "Session_", "Current Session", "Last Session"), restoreList: false, notes);
+        tabs.AddRange(ReadFirst(profile, Candidates(profile.Folder, "Tabs_", "Current Tabs", "Last Tabs"), restoreList: true, notes));
         return tabs;
     }
 
-    /// <summary>The newest <c>Sessions\{prefix}&lt;time&gt;</c> file, else the first older-style file that exists.</summary>
-    static string? Newest(string folder, string prefix, params string[] older)
+    static List<OpenTab> ReadFirst(BrowserProfile profile, List<string> files, bool restoreList, List<string> notes)
     {
-        var newest = SourceFiles.Files(Path.Combine(folder, "Sessions"), prefix + "*")
+        IOException? locked = null;
+        foreach (var file in files)
+        {
+            byte[] bytes;
+            try { bytes = SourceFiles.ReadAllBytes(file, FileCap); }
+            catch (IOException e) when (IsLocked(e)) { locked ??= e; continue; }
+            if (locked is not null)
+                notes.Add($"The current {(restoreList ? "recently closed tabs" : "session")} file of {profile.Browser} ({profile.Name}) for {profile.User} " +
+                          "is in use by the running browser, so the tabs shown come from the previous file.");
+            return Parse(profile, bytes, restoreList, notes);
+        }
+        if (locked is not null) throw locked;
+        return [];
+    }
+
+    /// <summary>Sharing or lock violation (the browser has the file open without sharing it).</summary>
+    static bool IsLocked(IOException e) => (e.HResult & 0xFFFF) is 32 or 33;
+
+    /// <summary><c>Sessions\{prefix}&lt;time&gt;</c> files newest first, then the older-style files that exist.</summary>
+    static List<string> Candidates(string folder, string prefix, params string[] older) =>
+        SourceFiles.Files(Path.Combine(folder, "Sessions"), prefix + "*")
             .Select(f => (Path: f, Stamp: long.TryParse(Path.GetFileName(f)[prefix.Length..], NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : -1))
             .Where(f => f.Stamp >= 0 && BrowserProfileFinder.FileExists(f.Path))
             .OrderByDescending(f => f.Stamp)
             .Select(f => f.Path)
-            .FirstOrDefault();
-        return newest ?? older.Select(o => Path.Combine(folder, o)).FirstOrDefault(BrowserProfileFinder.FileExists);
-    }
+            .Concat(older.Select(o => Path.Combine(folder, o)).Where(BrowserProfileFinder.FileExists))
+            .ToList();
 
     sealed class Tab
     {

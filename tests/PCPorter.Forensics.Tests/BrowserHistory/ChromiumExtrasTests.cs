@@ -260,6 +260,34 @@ public class ChromiumExtrasTests
         finally { BrowserFixtures.Delete(dir); }
     }
 
+    [Fact]
+    public void A_session_file_locked_by_the_running_browser_falls_back_to_the_previous_one_with_a_note()
+    {
+        var dir = BrowserFixtures.TempDir();
+        try
+        {
+            var sessions = Path.Combine(dir, "Sessions");
+            Directory.CreateDirectory(sessions);
+            var older = Path.Combine(sessions, "Session_13350000000000000");
+            var newer = Path.Combine(sessions, "Session_13360000000000000");
+            File.WriteAllBytes(older, new SnssBuilder().Navigation(1, 0, "https://previous.example/", "Previous").Bytes());
+            File.WriteAllBytes(newer, new SnssBuilder().Navigation(1, 0, "https://current.example/", "Current").Bytes());
+            var notes = new List<string>();
+
+            List<OpenTab> tabs;
+            using (new FileStream(newer, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                tabs = ChromiumSessions.Read(Profile with { Folder = dir }, notes);
+
+            Assert.Equal(["https://previous.example/"], tabs.Select(t => t.Url));
+            Assert.Contains(notes, n => n.Contains("in use by the running browser"));
+
+            using (new FileStream(newer, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            using (new FileStream(older, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                Assert.ThrowsAny<IOException>(() => ChromiumSessions.Read(Profile with { Folder = dir }, []));
+        }
+        finally { BrowserFixtures.Delete(dir); }
+    }
+
     // ---- The whole profile ----
 
     [Fact]
