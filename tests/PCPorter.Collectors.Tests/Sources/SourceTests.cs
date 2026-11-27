@@ -1,4 +1,5 @@
 using PCPorter.Collectors.Sources;
+using PCPorter.Core;
 using PCPorter.TestKit;
 
 namespace PCPorter.Collectors.Tests.Sources;
@@ -121,15 +122,16 @@ public class OfflineSourceTests : IDisposable
 
     [Fact]
     public void Folder_without_windows_is_rejected() =>
-        Assert.Throws<InvalidDataException>(() => new OfflineSource(_root, runningWindowsDrive: @"Z:\"));
+        Assert.Throws<SourceRejectedException>(() => new OfflineSource(_root, runningWindowsDrive: @"Z:\"));
 
     [Fact]
     public void The_running_windows_drive_is_rejected_however_it_is_named()
     {
         var windowsDrive = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows))!;   // e.g. C:\
-        Assert.Throws<InvalidOperationException>(() => new OfflineSource(windowsDrive));
-        Assert.Throws<InvalidOperationException>(() => new OfflineSource(@"\\?\" + windowsDrive));
-        Assert.Throws<InvalidOperationException>(() => new OfflineSource(@"\\.\" + windowsDrive));
+        var ex = Assert.Throws<SourceRejectedException>(() => new OfflineSource(windowsDrive));
+        Assert.Contains("Windows you are running now", ex.Message);
+        Assert.Throws<SourceRejectedException>(() => new OfflineSource(@"\\?\" + windowsDrive));
+        Assert.Throws<SourceRejectedException>(() => new OfflineSource(@"\\.\" + windowsDrive));
     }
 
     [Fact]

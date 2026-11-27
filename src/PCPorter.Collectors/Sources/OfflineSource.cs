@@ -1,3 +1,4 @@
+using PCPorter.Core;
 using PCPorter.Core.IO;
 
 namespace PCPorter.Collectors.Sources;
@@ -20,6 +21,7 @@ public sealed class OfflineSource : ISystemSource
 
     /// <param name="readRoot">"D:\" or a device path like \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy3\</param>
     /// <param name="runningWindowsDrive">Test hook only. By default this PC's own Windows is detected and refused.</param>
+    /// <exception cref="SourceRejectedException">The running Windows, no Windows installation, or it cannot be read.</exception>
     public OfflineSource(string readRoot, string? runningWindowsDrive = null)
     {
         ReadRoot = readRoot.EndsWith('\\') ? readRoot : readRoot + "\\";
@@ -32,13 +34,13 @@ public sealed class OfflineSource : ISystemSource
             : Path.Combine(runningWindowsDrive, "Windows");
         var runningId = FileIdentity.Identity(Path.Combine(running, "System32"));
         if (runningId is null && runningWindowsDrive is null)
-            throw new InvalidOperationException("PCPorter could not tell which Windows is running, so it will not scan another drive.");
+            throw new SourceRejectedException("PCPorter could not tell which Windows is running, so it will not scan another drive.");
         if (runningId is not null && FileIdentity.Identity(Path.Combine(ReadRoot, "Windows", "System32")) == runningId)
-            throw new InvalidOperationException("That is the Windows you are running now. Use a normal scan for this PC.");
+            throw new SourceRejectedException("That is the Windows you are running now. Use a normal scan for this PC.");
 
         var hive = Path.Combine(ReadRoot, "Windows", "System32", "config", "SOFTWARE");
         if (!File.Exists(hive))
-            throw new InvalidDataException($"No Windows installation was found on {ReadRoot} (or it can only be read with administrator rights).");
+            throw new SourceRejectedException($"No Windows installation was found on {ReadRoot} (or it can only be read with administrator rights).");
 
         var cv = OpenHive(Hive.Software)?.Open(@"Microsoft\Windows NT\CurrentVersion");
         var sysRoot = cv?.GetString("SystemRoot");

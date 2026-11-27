@@ -53,7 +53,7 @@ public class ScanJobTests : IDisposable
         var empty = Directory.CreateTempSubdirectory("pcporter-notwindows").FullName;
         try
         {
-            Assert.Throws<InvalidDataException>(() => ScanJob.Run(_out, new ScanJobOptions(OfflineRoot: empty), _ => []));
+            Assert.Throws<PCPorter.Core.SourceRejectedException>(() => ScanJob.Run(_out, new ScanJobOptions(OfflineRoot: empty), _ => []));
             Assert.False(Directory.Exists(Path.Combine(_out, "PCPorter")));
         }
         finally { Directory.Delete(empty, true); }
