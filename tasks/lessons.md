@@ -60,3 +60,8 @@
 - The source was scrubbed before the repo went public, but the published EXE still held the build folder (Windows user
   name, OneDrive tenant) in five embedded PDB paths. Fixed with PathMap in Directory.Build.props. Rule: before
   publishing a release, search the EXE's bytes (ASCII and UTF-16) for the user name, tenant and machine name.
+
+## Timing tests measure from the event, not from the start (2026-11-27)
+- A "stops within 2 s of Cancel" test started its stopwatch before the work began, so shell start-up under the full
+  parallel test run (2.6 s) failed it. Rule: in latency tests, record the moment the trigger fires (token.Register)
+  and assert on the time after it; and never trust a sub-agent's "ALL PASSED": rerun it.

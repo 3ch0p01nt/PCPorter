@@ -27,10 +27,15 @@ public class ResolverCancellationTests : IDisposable
     public void Shell_walk_stops_soon_after_cancel()
     {
         var resolver = new ShellCacheIdResolver([ManyFiles(3000)], timeBudget: TimeSpan.FromMinutes(3));
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        // Measured from the moment Cancel fires, not from the start: shell start-up under a busy test run can
+        // itself take seconds and is not what this test is about.
         var sw = Stopwatch.StartNew();
+        TimeSpan? cancelledAt = null;
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        using var reg = cts.Token.Register(() => cancelledAt = sw.Elapsed);
         Assert.ThrowsAny<OperationCanceledException>(() => resolver.Resolve([0xDEADBEEFUL], cts.Token));
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"took {sw.Elapsed}");
+        var afterCancel = sw.Elapsed - cancelledAt!.Value;
+        Assert.True(afterCancel < TimeSpan.FromSeconds(2), $"stopped {afterCancel} after Cancel");
     }
 
     [Fact]
