@@ -118,10 +118,12 @@ public static class FileIdentity
         return p;
     }
 
+    // FILETIME is two DWORDs (4-byte aligned): a C# long here would add padding and shift every later field.
     [StructLayout(LayoutKind.Sequential)]
     struct BY_HANDLE_FILE_INFORMATION
     {
-        public uint FileAttributes; public long CreationTime, LastAccessTime, LastWriteTime;
+        public uint FileAttributes;
+        public uint CreationLow, CreationHigh, LastAccessLow, LastAccessHigh, LastWriteLow, LastWriteHigh;
         public uint VolumeSerialNumber, FileSizeHigh, FileSizeLow, NumberOfLinks, FileIndexHigh, FileIndexLow;
     }
 
