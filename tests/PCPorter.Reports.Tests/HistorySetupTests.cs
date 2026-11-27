@@ -42,8 +42,8 @@ public sealed class HistorySetupTests : IDisposable
         var drive = Path.Combine(_temp, "olddrive") + "\\";
         Assert.NotNull(HistorySetup.SaveFolderProblem(Path.Combine(drive, "Cases"), drive));
         Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "olddrive-cases"), drive));   // a sibling, not inside
-        Assert.Null(HistorySetup.SaveFolderProblem(@"E:\Cases", @"D:\"));
-        Assert.Null(HistorySetup.SaveFolderProblem(@"E:\Cases", null));
+        Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "Cases"), @"D:\"));   // a drive that exists (E: may not)
+        Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "Cases"), null));
     }
 
     [Fact]
