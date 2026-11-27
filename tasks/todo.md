@@ -123,9 +123,10 @@ Design: [docs/plans/2026-11-26-pcporter-design.md](../docs/plans/2026-11-26-pcpo
   viewed). Tier 3: bob's planted Chrome/Firefox/IE history on the fake drive, golden history-oldpc.txt, canary and
   bait-file spy, drive unchanged. Tier 4: smoke.ps1 runs `history` live and offline; History.html is in the Edge
   render check. Verified non-elevated: offline on the fake drive (35 visits, 8 recovered) and live on this PC.
-  Unverified: elevated restore points on a PC that has some, elevated live IE via the temporary shadow copy, a real
-  WebCacheV01.dat (only synthetic ones so far), a real Firefox profile, the tier-4 smoke run (needs the smoke task
-  reinstalled) and the manual checklist's Web history section.
+  Tier 4 release run (2026-11-27, elevated): ALL PASSED, 34 checks, 630 s. Live elevated history read this PC's real
+  WebCacheV01.dat through the temporary shadow copy (19 visits, no warnings); restore-point search ran and found none
+  on this PC. Unverified: restore points on a PC that has some, a real Firefox profile, the manual checklist's Web
+  history section (GUI not clicked through yet).
 - [ ] Timeline.html (+ MFT/USN, USB, network, screen time, compromise verdict)
 - [ ] Thumbnails.html (+ carving, dHash, EXIF, map)
 - [ ] Passwords.html (+ accounts inventory)
