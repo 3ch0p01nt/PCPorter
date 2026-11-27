@@ -38,11 +38,19 @@ public static class ThumbnailJob
         var imagesFolder = Path.Combine(reportFolder, "thumbs");
         var work = Path.Combine(folder.Path, "work");
         CaseFolder.CreatePrivate(work);
-        try { return Collect(); }
+        bool reportWritten = false;
+        try
+        {
+            var result = Collect();
+            reportWritten = true;
+            return result;
+        }
         finally
         {
             // Also on Cancel or a failure: the work folder can hold a copy of the search index.
-            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            TryDelete(work);
+            // Without a report nobody would know the extracted private pictures are there: remove the whole case.
+            if (!reportWritten) TryDelete(folder.Path);
         }
 
         ThumbnailJobResult Collect()
@@ -105,6 +113,16 @@ public static class ThumbnailJob
         var meta = new ReportMeta(Environment.MachineName, when, version, sources.Select(s => s.User).ToList(), options.AllUsers);
         var report = GalleryReport.WriteFile(scan, meta, reportFolder);
         return new ThumbnailJobResult(report, folder.Path, scan, folder.Warnings);
+        }
+    }
+
+    static void TryDelete(string path)
+    {
+        // A file can be briefly held (antivirus, the search indexer): retry a few times.
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            try { if (Directory.Exists(path)) Directory.Delete(path, true); return; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Thread.Sleep(100 * (attempt + 1)); }
         }
     }
 }
