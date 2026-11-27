@@ -62,4 +62,23 @@ public class CaseFolderTests : IDisposable
         Assert.True(Directory.Exists(link));
         Assert.Throws<CaseLocationRejectedException>(() => CaseFolder.Create(link, Now, "PC", NoEnv));
     }
+
+    [Fact]
+    public void Nothing_is_created_through_a_junction()
+    {
+        var target = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
+        var link = Path.Combine(_root, "link");
+        CaseLocationTests.Junction(link, target);
+        Assert.Throws<CaseLocationRejectedException>(() => CaseFolder.Create(Path.Combine(link, "new", "cases"), Now, "PC", NoEnv));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(target));          // no folder was made in the link's target
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("relative")]
+    public void Empty_or_relative_folder_is_a_clear_rejection(string outRoot)
+    {
+        var ex = Assert.Throws<CaseLocationRejectedException>(() => CaseFolder.Create(outRoot, Now, "PC", NoEnv));
+        Assert.StartsWith("Pick a full folder path", ex.Message);
+    }
 }

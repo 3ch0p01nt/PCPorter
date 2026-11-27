@@ -21,8 +21,9 @@ public static class CaseFolder
 
         var warnings = new List<string>();
         var full = Path.GetFullPath(outRoot);
+        RejectLinks(full);                  // the existing folders on the way, BEFORE anything is created through them
         Directory.CreateDirectory(full);
-        RejectLinks(full);
+        RejectLinks(full);                  // and again, in case one was swapped in meanwhile
 
         var root = Path.Combine(full, "PCPorter");
         if (Directory.Exists(root)) RejectLinks(root);
@@ -66,14 +67,13 @@ public static class CaseFolder
         if (WindowsIdentity.GetCurrent().User is { } me) yield return me;
     }
 
+    /// <summary>Any reparse point among the existing folders of <paramref name="path"/> (checked from the root down, links not followed) is refused.</summary>
     static void RejectLinks(string path)
     {
-        for (var p = path; !string.IsNullOrEmpty(p); p = Path.GetDirectoryName(p))
-        {
-            var info = new DirectoryInfo(p);
-            if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint) && info.LinkTarget is not null)
-                throw new CaseLocationRejectedException($"{p} is a link to another location. Pick a normal folder.");
-        }
+        var drive = path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..] : path;
+        if (drive.Length < 3 || drive[1] != ':') throw new CaseLocationRejectedException(@"Pick a full folder path, for example E:\PCPorter.");
+        if (CaseLocation.ChainProblem(Path.TrimEndingDirectorySeparator(drive), WindowsProbe.Instance, out _) is { } problem)
+            throw new CaseLocationRejectedException(problem);
     }
 
     static string Safe(string s) => string.Concat(s.Select(c => char.IsLetterOrDigit(c) || c is '-' ? c : '_'));
