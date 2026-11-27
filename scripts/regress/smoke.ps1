@@ -7,7 +7,8 @@
   from its admin-only copy in C:\PCPorterCI. It can also be run by hand from an administrator PowerShell 7.
 
   It never runs the EXE from the user-writable dist folder: the 7 files are first copied to C:\PCPorterCI\run
-  (administrators only) and their SHA-256 is recorded. Results: <OutRoot>\smoke-<time>\result.json, and a copy at
+  (administrators only) and the EXE's SHA-256 is recorded as facts.exeSha256 (package.ps1 zips only an EXE whose hash
+  matches a passing, non-DryRun smoke-last.json). Results: <OutRoot>\smoke-<time>\result.json, and a copy at
   <OutRoot>\smoke-last.json for regress.ps1. Exit code 0 = every check passed.
 #>
 #Requires -Version 7
@@ -213,7 +214,7 @@ if (Test-Path $last) {
 }
 
 $failed = @($checks | Where-Object status -eq 'FAIL').Count
-$result = [ordered]@{ started = $started.ToString('o'); seconds = [int]((Get-Date) - $started).TotalSeconds; folder = $out; ok = ($failed -eq 0); failed = $failed; facts = $facts; checks = $checks }
+$result = [ordered]@{ started = $started.ToString('o'); seconds = [int]((Get-Date) - $started).TotalSeconds; folder = $out; ok = ($failed -eq 0); failed = $failed; dryRun = [bool]$DryRun; facts = $facts; checks = $checks }
 $json = $result | ConvertTo-Json -Depth 6
 $json | Out-File (Join-Path $out 'result.json') -Encoding utf8
 $json | Out-File $last -Encoding utf8
