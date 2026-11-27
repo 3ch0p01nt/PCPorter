@@ -85,7 +85,7 @@ function Invoke-Smoke {
     if ($edge) {
         $profileDir = Join-Path $run 'edge-profile'
         $n = 0
-        foreach ($report in Get-ChildItem $result.folder -Recurse -Include 'HealthReport.html', 'Thumbnails.html') {
+        foreach ($report in Get-ChildItem $result.folder -Recurse -Include 'HealthReport.html', 'Thumbnails.html', 'History.html') {
             $n++
             $uri = ([Uri]$report.FullName).AbsoluteUri
             # Edge is a GUI program: '&' neither waits for it nor captures its output, so use Start-Process with files.
@@ -96,8 +96,13 @@ function Invoke-Smoke {
                 -RedirectStandardOutput (Join-Path $run "render$n.shot.txt") -RedirectStandardError (Join-Path $run "render$n.shot.err.txt") -Wait -NoNewWindow
             # Only the report's own script errors count (Edge's built-in extensions log noise such as "browser is shutting down").
             $errors = Select-String -Path $errFile -Pattern 'Uncaught|CONSOLE.*[Ee]rror' | Where-Object { $_.Line -match 'source: file:' -or $_.Line -match 'Uncaught' }
-            # HealthReport ends with its read-only footer; the gallery has no footer but must render to the end of its page.
-            $expect = if ($report.Name -eq 'HealthReport.html') { 'Read-only scan\. Nothing was changed' } else { '</body>' }
+            # HealthReport ends with its read-only footer; the gallery has no footer but must render to the end of its page;
+            # History's script fills the form-entries count as its last table, so a count there means the script ran through.
+            $expect = switch ($report.Name) {
+                'HealthReport.html' { 'Read-only scan\. Nothing was changed' }
+                'History.html' { 'id="forms-count">\(\d' }
+                default { '</body>' }
+            }
             $ok = (Get-Content $domFile -Raw) -match $expect -and -not $errors
             if (-not $ok) { $renderOk = $false }
             Write-Host ("  {0,-4} {1} renders in Edge (screenshot render{2}.png)" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $report.Name, $n) -ForegroundColor $(if ($ok) { 'Gray' } else { 'Red' })

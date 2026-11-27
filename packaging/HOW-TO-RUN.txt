@@ -12,17 +12,23 @@ PCPorter - how to run it on your PC
 3. On the Home screen pick:
    - "Check health and security": antivirus, Windows protections, startup programs, apps to reinstall,
      hardware health. Read-only: nothing on the PC is changed. Produces HealthReport.html.
-   - "Explore my PC's history": the picture gallery (thumbnail cache, browser caches, screenshots).
+   - "Explore my PC's history" opens "Web history": websites visited, searches, downloads, bookmarks,
+     open tabs and form entries from Chrome, Edge, Brave, Opera, Vivaldi, Firefox and Internet Explorer,
+     including deleted visits that can still be recovered (and older ones from restore points, as
+     administrator). Saved passwords, cookies and payment cards are never read. Produces History.html.
+     It works on this PC or on another PC's drive. From there, "Images viewed" is the picture gallery
+     (thumbnail cache, browser caches, screenshots); both pages are also in the menu on the left.
    Save the results to your backup drive (PCPorter refuses OneDrive/cloud-synced folders on purpose).
 
 4. Old PC that won't start? Connect its drive to a working PC (USB adapter), then in
-   "Check health and security" choose "Another PC's drive". If it's BitLocker-locked, unlock it in
+   "Check health and security" or "Web history" choose "Another PC's drive". If it's BitLocker-locked, unlock it in
    File Explorer first with the recovery key (aka.ms/myrecoverykey).
 
 Optional: command line (open Terminal as administrator in this folder)
    .\PCPorter.exe selftest
    .\PCPorter.exe scan --out E:\
    .\PCPorter.exe thumbs --out E:\
+   .\PCPorter.exe history --out E:\        (add --offline D:\ for another PC's drive, --all-users, --json)
    Exit codes: 0 ok, 1 partial, 2 failed, 3 bad arguments, 4 not elevated, 5 findings (--fail-on), 6 cancelled.
 
 Optional: track this PC over time (baseline.ps1, for the developer)
@@ -36,8 +42,8 @@ Optional: track this PC over time (baseline.ps1, for the developer)
    The summaries stay on this PC.
 
 Where things go
-   Results:  <your folder>\PCPorter\<PC name>_<date>\  (HealthReport.html, Thumbnails.html, case.db)
+   Results:  <your folder>\PCPorter\<PC name>_<date>\  (HealthReport.html, Thumbnails.html, History.html, case.db)
              These folders can only be opened by you and administrators.
    Logs:     C:\ProgramData\PCPorter\logs (when run as administrator)
 
-Not built yet: Backup/restore ("Move to my new PC"), web history, timeline and passwords reports.
+Not built yet: Backup/restore ("Move to my new PC"), timeline and passwords reports.

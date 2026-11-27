@@ -2,7 +2,7 @@
 
 Plan: [docs/plans/2026-11-26-regression-testing.md](../plans/2026-11-26-regression-testing.md). Run this before
 handing a new build to another PC, after `scripts/regress.ps1 -Level release` has passed. It covers what the
-automated tiers can't: the windows themselves. About 20 minutes. Automating it with FlaUI is planned for Phase 7.
+automated tiers can't: the windows themselves. About 30 minutes. Automating it with FlaUI is planned for Phase 7.
 
 Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug build. Write results to
 `C:\PCPorterCases\manual\` (never OneDrive). Copy the table at the end into the release notes or `tasks/todo.md`.
@@ -60,13 +60,32 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
   - [ ] Print preview shows the contact sheet.
 - [ ] Run it again with "Include web browser caches" unticked. There are no web pictures.
 
-## 5. Narrator (Health page)
+## 5. Web history
+- [ ] Home > "Explore my PC's history" opens Web history (also in the menu on the left). The "Go to Images viewed"
+      link opens the gallery page.
+- [ ] The OneDrive folder refusal works here too.
+- [ ] Without administrator rights: "Also include the other accounts" and "Look for older history in existing restore
+      points" are greyed out and the hint under them says why. As administrator both can be ticked.
+- [ ] Build the report for this PC into `C:\PCPorterCases\manual`. While it runs, the inputs and Start are greyed out,
+      the status line names each browser, and Cancel works ("Stopped", controls enabled again).
+- [ ] When it ends: a sentence with the counts, "Open the report" and "Open the case folder" (History.html, case.db;
+      no `work` folder left; Properties > Security lists only SYSTEM, Administrators and you).
+- [ ] Open the report: the visit table scrolls, sorts and filters; Export CSV works; the charts and the coverage table
+      match your browsers. No saved passwords, cookies or card numbers appear anywhere.
+- [ ] As administrator, the processing notes say whether restore points and Internet Explorer history were read.
+- [ ] Another PC's drive: choose `P:\`. "All accounts" is ticked and greyed, restore points unticked and greyed.
+      Saving to `P:\out` is refused. Saved to `C:\PCPorterCases\manual`, the report shows bob's Chrome (with 8
+      recovered visits), Firefox and Internet Explorer history.
+
+## 6. Narrator (Health and Web history pages)
 - [ ] Turn on Narrator (Ctrl+Win+Enter). Tab through the Health page: every control is read with a name, including
       the drive list ("Drive with the other PC's Windows").
 - [ ] Start a scan. Narrator reads the steps ("Step 2 of 5: ...") and the finish message without moving focus.
 - [ ] Cancel is read as "Stopping after the current step...", then "Scan stopped.".
+- [ ] Web history: every control is read with a name. During a run Narrator reads each browser as it is read, then
+      "Report ready." with the counts.
 
-## 6. Clean-up
+## 7. Clean-up
 - [ ] `subst P: /D`. Delete `C:\PCPorterCases\manual` if the results are no longer needed.
 
 ## Result

@@ -12,9 +12,14 @@ All read-only: nothing on the scanned PC is changed.
 - **Dead-PC rescue:** scan an old PC's Windows drive connected to another PC, without booting it.
 - **Images viewed** (`Thumbnails.html`): Explorer's thumbnail cache (including pictures whose originals were deleted),
   browser caches, screenshots and recently opened images, in an offline gallery.
-- Command line: `PCPorter.exe scan --out E:\`, `PCPorter.exe thumbs --out E:\`, `PCPorter.exe selftest`.
+- **Web history** (`History.html`): visits, searches, downloads, bookmarks, open tabs and form entries from
+  Chromium browsers (Chrome, Edge, Brave, Opera, Vivaldi), Firefox and Internet Explorer / legacy Edge, including
+  deleted visits recovered from the history files' free space and older visits from existing restore points
+  (administrator). Saved passwords, cookies and payment cards are never read. Works on this PC or another PC's drive.
+- Command line: `PCPorter.exe scan --out E:\`, `PCPorter.exe thumbs --out E:\`, `PCPorter.exe history --out E:\`
+  (`--offline D:\`, `--all-users`, `--json`), `PCPorter.exe selftest`.
 
-Not built yet: backup and restore, web history, activity timeline and saved-password reports. See
+Not built yet: backup and restore, activity timeline and saved-password reports. See
 [docs/plans/2026-11-26-pcporter-design.md](docs/plans/2026-11-26-pcporter-design.md) for the full design and
 [tasks/todo.md](tasks/todo.md) for progress.
 

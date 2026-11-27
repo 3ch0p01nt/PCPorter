@@ -115,7 +115,17 @@ Design: [docs/plans/2026-11-26-pcporter-design.md](../docs/plans/2026-11-26-pcpo
 
 ## Phase 3 - Reports
 - [ ] Shared HTML report template (ECharts, uPlot, Tabulator, fflate)
-- [ ] History.html
+- [x] History.html (plan: docs/plans/2026-11-27-web-history.md, Milestones 1-5). Built: Chromium (Chrome, Edge,
+  Brave, Opera, Vivaldi), Firefox and IE / legacy Edge (WebCacheV01.dat) visits, searches, downloads (still on disk?),
+  bookmarks, open and closed tabs, form entries (password/card fields dropped, Web Data guarded to the autofill table);
+  deleted visits carved from free space and the WAL; older visits from existing restore points (admin); CLI `history`
+  and the WPF "Web history" page (this PC or another PC's drive; Home's history tile opens it, linked to Images
+  viewed). Tier 3: bob's planted Chrome/Firefox/IE history on the fake drive, golden history-oldpc.txt, canary and
+  bait-file spy, drive unchanged. Tier 4: smoke.ps1 runs `history` live and offline; History.html is in the Edge
+  render check. Verified non-elevated: offline on the fake drive (35 visits, 8 recovered) and live on this PC.
+  Unverified: elevated restore points on a PC that has some, elevated live IE via the temporary shadow copy, a real
+  WebCacheV01.dat (only synthetic ones so far), a real Firefox profile, the tier-4 smoke run (needs the smoke task
+  reinstalled) and the manual checklist's Web history section.
 - [ ] Timeline.html (+ MFT/USN, USB, network, screen time, compromise verdict)
 - [ ] Thumbnails.html (+ carving, dHash, EXIF, map)
 - [ ] Passwords.html (+ accounts inventory)

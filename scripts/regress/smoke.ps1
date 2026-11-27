@@ -142,6 +142,18 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
         $after = Get-Fingerprint $Fixture
         $changed = @($before.Keys + $after.Keys | Sort-Object -Unique | Where-Object { $before[$_] -ne $after[$_] })
         Add-Check 'The fake old drive is byte-for-byte unchanged' ($changed.Count -eq 0) ((@($changed) | Select-Object -First 5) -join ', ')
+        # Web history of the fake drive: bob's planted Chrome (with 8 deleted visits), Firefox and IE history.
+        $ho = Invoke-Pcp -Name 'history-offline' -Arguments 'history', '--offline', $Fixture, '--out', "$out\history-offline", '--json'
+        $hoj = Read-Json $ho.Out
+        $facts.historyOfflineSummary = $hoj.summary
+        $hoReport = $hoj.summary.report
+        $planted = $hoReport -and (Test-Path -LiteralPath $hoReport) -and (Get-Content -LiteralPath $hoReport -Raw).Contains('news.example')
+        Add-Check 'Offline history of the fake drive: planted and deleted visits found' ($ho.Code -in 0, 1 -and $planted -and $hoj.summary.profiles -eq 3 -and
+            $hoj.summary.visits -ge 30 -and $hoj.summary.recovered -ge 8) "exit $($ho.Code); profiles $($hoj.summary.profiles), visits $($hoj.summary.visits), recovered $($hoj.summary.recovered)" $ho.Seconds
+        if ($hoj.summary.caseFolder) { $cases += $hoj.summary.caseFolder }
+        $afterHistory = Get-Fingerprint $Fixture
+        $changed = @($before.Keys + $afterHistory.Keys | Sort-Object -Unique | Where-Object { $before[$_] -ne $afterHistory[$_] })
+        Add-Check 'The fake old drive is unchanged after the history report' ($changed.Count -eq 0) ((@($changed) | Select-Object -First 5) -join ', ')
         $fo = Invoke-Pcp -Name 'scan-offline-failon' -Arguments 'scan', '--offline', $Fixture, '--out', "$out\offline-failon", '--json', '--quiet', '--fail-on', 'high'
         Add-Check '--fail-on high exits 5 on findings' ($fo.Code -eq 5) "exit $($fo.Code)" $fo.Seconds
         if ((Read-Json $fo.Out).summary.casePath) { $cases += (Read-Json $fo.Out).summary.casePath }
@@ -162,6 +174,15 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     Add-Check 'thumbs: exit 0 or 1 with a JSON summary' ($th.Code -in 0, 1 -and $tj) "exit $($th.Code)" $th.Seconds
     $thumbCase = Get-ChildItem "$out\thumbs" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'case.db') } | Select-Object -First 1
     if ($thumbCase) { $cases += $thumbCase.FullName }
+
+    # Web history of this PC (elevated: restore points and IE through a temporary shadow copy). The canary scan below covers it.
+    $hl = Invoke-Pcp -Name 'history-live' -Arguments 'history', '--out', "$out\history", '--json'
+    $hlj = Read-Json $hl.Out
+    $facts.historySummary = $hlj.summary
+    $hlReport = $hlj.summary.report
+    Add-Check 'history: exit 0 or 1, History.html written, work folder gone' ($hl.Code -in 0, 1 -and $hlReport -and (Test-Path -LiteralPath $hlReport) -and
+        (Split-Path $hlReport -Leaf) -eq 'History.html' -and -not (Test-Path (Join-Path $hlj.summary.caseFolder 'work'))) "exit $($hl.Code)" $hl.Seconds
+    if ($hlj.summary.caseFolder) { $cases += $hlj.summary.caseFolder }
 
     # ---- 5. Outputs: private folders, no secrets ----
     $allowed = @('S-1-5-18', 'S-1-5-32-544', $me.User.Value)
