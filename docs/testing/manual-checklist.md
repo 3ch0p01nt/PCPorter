@@ -77,6 +77,15 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
       Saving to `P:\out` is refused. Saved to `C:\PCPorterCases\manual`, the report shows bob's Chrome (with 8
       recovered visits), Firefox and Internet Explorer history.
 
+## 5b. Work is kept (navigation and restart)
+- [ ] Start a Web history report (or a gallery), click Home in the menu while it runs, then click Web history again:
+      the run is still going (status line, Cancel enabled), the folder and options you chose are unchanged, and it
+      finishes on that page with "Open the report". Repeat once and press Cancel after coming back: it stops.
+- [ ] Do the same from the Home tile ("Explore my PC's history"): it opens the same page, not a fresh one.
+- [ ] Close PCPorter and start it again. Web history, Images viewed and Health show the folder, options and drive
+      (only if still connected) from the last start, and "Last report: <date time> - <counts>" with Open the report /
+      Open the case folder. Delete or move that report, restart: the "Last ..." line is gone.
+
 ## 6. Narrator (Health and Web history pages)
 - [ ] Turn on Narrator (Ctrl+Win+Enter). Tab through the Health page: every control is read with a name, including
       the drive list ("Drive with the other PC's Windows").

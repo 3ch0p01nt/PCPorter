@@ -5,7 +5,9 @@ using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using PCPorter.App.Infrastructure;
 using PCPorter.Core.Case;
+using PCPorter.Core.Config;
 using PCPorter.Core.Security;
 using PCPorter.Reports;
 using Serilog;
@@ -23,16 +25,43 @@ public partial class HistoryPage : Page
     CancellationTokenSource? _cts;
     string? _report, _case;
     bool? _allUsersOnThisPc, _restoreOnThisPc;     // the choices to give back when switching from another PC's drive
+    bool _seen;                                     // the page is cached for the session: Loaded fires on every visit
+
+    const string MemoryKey = "history";
+    readonly PageMemory _memory = Remembered.Pages.Get(MemoryKey);
 
     public HistoryPage()
     {
         InitializeComponent();
-        OutFolder.Text = WindowsDrives.SuggestedSaveFolder();
+        OutFolder.Text = string.IsNullOrWhiteSpace(_memory.SaveFolder) ? WindowsDrives.SuggestedSaveFolder() : _memory.SaveFolder;
+        Remembered.RestoreOptions(_memory, ("allUsers", AllUsers), ("restorePoints", RestorePoints));
         ThisPc.Checked += (_, _) => UpdateOptions();
         OtherDrive.Checked += (_, _) => UpdateOptions();
         UpdateOptions();
-        Loaded += async (_, _) => await RefreshDrives();
+        ShowLastRun();
+        Loaded += async (_, _) =>
+        {
+            if (_seen) return;
+            _seen = true;
+            await RefreshDrives();
+            if (_memory.Source == PageMemory.OtherDrive && _cts is null
+                && Drives.ItemsSource is List<DriveChoice> found && found.FirstOrDefault(c => c.Usable && c.Root == _memory.DriveRoot) is { } drive)
+            { Drives.SelectedItem = drive; OtherDrive.IsChecked = true; }
+        };
     }
+
+    /// <summary>The last finished report, while its file still exists (otherwise it is forgotten).</summary>
+    void ShowLastRun()
+    {
+        if (Remembered.Pages.RecallLastRun(MemoryKey) is not { } last) return;
+        _report = last.ReportPath; _case = last.CaseFolder;
+        Announce(PageMemoryStore.Describe("Last report", last));
+        OpenReport.Visibility = Visibility.Visible;
+        OpenFolder.Visibility = _case is not null && Directory.Exists(_case) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void RememberRun(RunOutcome outcome, string summary) =>
+        Remembered.Pages.Update(MemoryKey, m => m with { LastRun = new LastRun(DateTime.Now, outcome, summary, _report, _case) });
 
     bool Offline => OtherDrive.IsChecked == true;
 
@@ -96,6 +125,13 @@ public partial class HistoryPage : Page
 
         // Not administrator on this PC: restore points stay "asked for" so the report says why they were not searched.
         var request = new HistoryRequest(outRoot, choice?.Root, AllUsers.IsChecked == true, Offline ? false : RestorePoints.IsChecked == true || !_elevated);
+        var userChoice = !Offline && _elevated;   // otherwise both boxes are forced: keep what was remembered for this PC
+        Remembered.Pages.Update(MemoryKey, m => m with
+        {
+            SaveFolder = outRoot, Source = Offline ? PageMemory.OtherDrive : PageMemory.ThisPc, DriveRoot = choice?.Root,
+            Options = Remembered.Options(m, ("allUsers", AllUsers, userChoice), ("restorePoints", RestorePoints, userChoice)),
+        });
+        _report = _case = null;
         Result.IsOpen = false;
         OpenReport.Visibility = OpenFolder.Visibility = Visibility.Collapsed;
         SetBusy(true);
@@ -108,16 +144,18 @@ public partial class HistoryPage : Page
             _report = r.ReportPath; _case = r.CaseFolder;
             var s = HistoryJob.Summarize(r);
             var found = HistorySetup.Describe(s);
-            Show(s.Warnings > 0 ? "Report ready, with gaps" : "Report ready",
-                found + (s.Warnings > 0 ? $" {s.Warnings} part{(s.Warnings == 1 ? "" : "s")} could not be read; the report's processing notes say which." : ""),
+            var message = found + (s.Warnings > 0 ? $" {s.Warnings} part{(s.Warnings == 1 ? "" : "s")} could not be read; the report's processing notes say which." : "");
+            Show(s.Warnings > 0 ? "Report ready, with gaps" : "Report ready", message,
                 s.Warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
             Announce("Report ready. " + found);
             OpenReport.Visibility = OpenFolder.Visibility = Visibility.Visible;
+            RememberRun(s.Warnings > 0 ? RunOutcome.Partial : RunOutcome.Ok, message);
         }
         catch (OperationCanceledException)
         {
             Announce("Stopped.");
             Show("Stopped", "Nothing was changed on the PC. A partly written case folder may remain.", InfoBarSeverity.Warning);
+            RememberRun(RunOutcome.Stopped, "Stopped before the report was written.");
         }
         catch (Exception ex) when (ex is CaseLocationRejectedException or InvalidDataException or InvalidOperationException)
         {
@@ -127,11 +165,13 @@ public partial class HistoryPage : Page
         {
             Log.Warning(ex, "history report could not be written");
             Show("Couldn't save the report", Redactor.Redact(ex.Message), InfoBarSeverity.Error);
+            RememberRun(RunOutcome.Failed, "The report could not be saved.");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "history report crashed");
             Show("Something went wrong", $"The report stopped unexpectedly. Details are in the log folder: {Infrastructure.Logging.Folder}", InfoBarSeverity.Error);
+            RememberRun(RunOutcome.Failed, "The report stopped unexpectedly.");
         }
         finally { SetBusy(false); _cts?.Dispose(); _cts = null; }
     }

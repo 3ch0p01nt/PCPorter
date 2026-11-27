@@ -8,8 +8,10 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using PCPorter.App.Infrastructure;
 using PCPorter.Collectors;
 using PCPorter.Core.Case;
+using PCPorter.Core.Config;
 using PCPorter.Core.Security;
 using PCPorter.Reports;
 using Serilog;
@@ -33,15 +35,41 @@ public partial class ScanPage : Page
     CancellationTokenSource? _cts;
     DateTime _startedAt;
     string? _report, _case;
+    bool _seen;                                     // the page is cached for the session: Loaded fires on every visit
+
+    const string MemoryKey = "scan";
+    readonly PageMemory _memory = Remembered.Pages.Get(MemoryKey);
 
     public ScanPage()
     {
         InitializeComponent();
         Cards.ItemsSource = _cards;
-        OutFolder.Text = WindowsDrives.SuggestedSaveFolder();
+        OutFolder.Text = string.IsNullOrWhiteSpace(_memory.SaveFolder) ? WindowsDrives.SuggestedSaveFolder() : _memory.SaveFolder;
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
-        Loaded += async (_, _) => await RefreshDrives();
+        ShowLastRun();
+        Loaded += async (_, _) =>
+        {
+            if (_seen) return;
+            _seen = true;
+            await RefreshDrives();
+            if (_memory.Source == PageMemory.OtherDrive && _cts is null
+                && Drives.ItemsSource is List<DriveChoice> found && found.FirstOrDefault(c => c.Usable && c.Root == _memory.DriveRoot) is { } drive)
+            { Drives.SelectedItem = drive; OtherDrive.IsChecked = true; }
+        };
     }
+
+    /// <summary>The last finished check, while its report still exists (otherwise it is forgotten).</summary>
+    void ShowLastRun()
+    {
+        if (Remembered.Pages.RecallLastRun(MemoryKey) is not { } last) return;
+        _report = last.ReportPath; _case = last.CaseFolder;
+        Announce(PageMemoryStore.Describe("Last check", last));
+        OpenReport.Visibility = Visibility.Visible;
+        OpenFolder.Visibility = _case is not null && Directory.Exists(_case) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void RememberRun(RunOutcome outcome, string summary) =>
+        Remembered.Pages.Update(MemoryKey, m => m with { LastRun = new LastRun(DateTime.Now, outcome, summary, _report, _case) });
 
     /// <summary>Looks for other Windows drives off the UI thread (a sleeping USB disk can take seconds to answer).</summary>
     async Task RefreshDrives()
@@ -74,6 +102,9 @@ public partial class ScanPage : Page
         if (offline is not null && string.Equals(Path.GetPathRoot(Path.GetFullPath(outRoot)), offline, StringComparison.OrdinalIgnoreCase))
         { Show("Pick another folder", "Save the results somewhere other than the drive being checked, so nothing is written to it.", InfoBarSeverity.Warning); return; }
 
+        Remembered.Pages.Update(MemoryKey, m => m with
+        { SaveFolder = outRoot, Source = offline is null ? PageMemory.ThisPc : PageMemory.OtherDrive, DriveRoot = offline });
+        _report = _case = null;
         _cards.Clear();
         Result.IsOpen = Banner.IsOpen = false;
         OpenReport.Visibility = OpenFolder.Visibility = Visibility.Collapsed;
@@ -102,29 +133,39 @@ public partial class ScanPage : Page
             {
                 Announce("Scan stopped.");
                 Show("Stopped", "The scan was stopped before the end. The report shows what was checked so far. Nothing on the PC was changed.", InfoBarSeverity.Warning);
+                RememberRun(RunOutcome.Stopped, "Stopped before the end; the report shows what was checked so far.");
             }
             else
             {
-                Announce(f.WorthALook == 0 ? "Scan finished. Nothing stood out."
-                    : $"Scan finished. {f.WorthALook} {(f.WorthALook == 1 ? "thing is" : "things are")} worth a look.");
+                var finished = f.WorthALook == 0 ? "Scan finished. Nothing stood out."
+                    : $"Scan finished. {f.WorthALook} {(f.WorthALook == 1 ? "thing is" : "things are")} worth a look.";
+                var gaps = r.Run.AnyFailed || r.Run.AnyPartial;
+                var detail = gaps ? "Some parts could not be checked; the report says which and why." : "All parts were checked.";
+                Announce(finished);
                 Banner.IsOpen = f.WorthALook > 0;
-                Show("Done", r.Run.AnyFailed || r.Run.AnyPartial ? "Some parts could not be checked; the report says which and why." : "All parts were checked.",
-                    r.Run.AnyFailed || r.Run.AnyPartial ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+                Show("Done", detail, gaps ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+                RememberRun(gaps ? RunOutcome.Partial : RunOutcome.Ok, $"{finished} {detail}");
             }
             OpenReport.Visibility = _report is null ? Visibility.Collapsed : Visibility.Visible;
             OpenFolder.Visibility = Visibility.Visible;
         }
-        catch (OperationCanceledException) { Announce("Scan stopped."); Show("Stopped", "Nothing was changed on the PC.", InfoBarSeverity.Warning); }
+        catch (OperationCanceledException)
+        {
+            Announce("Scan stopped."); Show("Stopped", "Nothing was changed on the PC.", InfoBarSeverity.Warning);
+            RememberRun(RunOutcome.Stopped, "Stopped before the report was written.");
+        }
         catch (Exception ex) when (ex is CaseLocationRejectedException or InvalidDataException or InvalidOperationException) { Show("Can't start", Redactor.Redact(ex.Message), InfoBarSeverity.Warning); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Warning(ex, "scan failed");
             Show("Couldn't save the results", Redactor.Redact(ex.Message), InfoBarSeverity.Error);
+            RememberRun(RunOutcome.Failed, "The results could not be saved.");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "scan crashed");
             Show("Something went wrong", $"The scan stopped unexpectedly. Details are in the log folder: {Infrastructure.Logging.Folder}", InfoBarSeverity.Error);
+            RememberRun(RunOutcome.Failed, "The scan stopped unexpectedly.");
         }
         finally { _timer.Stop(); SetBusy(false); _cts?.Dispose(); _cts = null; }
     }

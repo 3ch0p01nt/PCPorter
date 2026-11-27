@@ -127,6 +127,11 @@ Design: [docs/plans/2026-11-26-pcporter-design.md](../docs/plans/2026-11-26-pcpo
   WebCacheV01.dat through the temporary shadow copy (19 visits, no warnings); restore-point search ran and found none
   on this PC. Unverified: restore points on a PC that has some, a real Firefox profile, the manual checklist's Web
   history section (GUI not clicked through yet).
+- [x] Work is kept (2026-11-27): pages are cached for the session (NavigationCacheMode="Required"; WPF-UI 4.3.0
+  caches by page type and Nav.Navigate(typeof) uses the same menu items, checked in the decompiled source), so a
+  running job keeps updating its page after clicking elsewhere. Web history, Images viewed and Health remember their
+  folder, options, drive and last result in %AppData%\PCPorter\settings.json (PageMemory; "Last report: ..." shown
+  only while the report file exists). Verified by UI Automation non-elevated; checklist section 5b.
 - [ ] Timeline.html (+ MFT/USN, USB, network, screen time, compromise verdict)
 - [ ] Thumbnails.html (+ carving, dHash, EXIF, map)
 - [ ] Passwords.html (+ accounts inventory)

@@ -4,7 +4,9 @@ using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using PCPorter.App.Infrastructure;
 using PCPorter.Core.Case;
+using PCPorter.Core.Config;
 using PCPorter.Forensics.Gallery;
 using PCPorter.Reports;
 using Serilog;
@@ -15,16 +17,29 @@ namespace PCPorter.App.Views;
 public partial class ThumbsPage : Page
 {
     CancellationTokenSource? _cts;
-    string? _reportPath;
+    string? _reportPath, _caseFolder;
     readonly bool _elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+
+    const string MemoryKey = "thumbs";
 
     public ThumbsPage()
     {
         InitializeComponent();
-        OutFolder.Text = SuggestFolder();
+        var memory = Remembered.Pages.Get(MemoryKey);
+        OutFolder.Text = string.IsNullOrWhiteSpace(memory.SaveFolder) ? SuggestFolder() : memory.SaveFolder;
+        Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
         AllUsers.IsEnabled = _elevated;
-        if (!_elevated) AllUsers.ToolTip = "Needs PCPorter to run as administrator.";
+        if (!_elevated) { AllUsers.IsChecked = false; AllUsers.ToolTip = "Needs PCPorter to run as administrator."; }
+        if (Remembered.Pages.RecallLastRun(MemoryKey) is { } last)
+        {
+            _reportPath = last.ReportPath;
+            Status.Text = PageMemoryStore.Describe("Last gallery", last);
+            OpenReport.Visibility = Visibility.Visible;
+        }
     }
+
+    void RememberRun(RunOutcome outcome, string summary) =>
+        Remembered.Pages.Update(MemoryKey, m => m with { LastRun = new LastRun(DateTime.Now, outcome, summary, _reportPath, _caseFolder) });
 
     /// <summary>First removable drive (the backup drive), else a local folder outside any synced location.</summary>
     static string SuggestFolder()
@@ -47,6 +62,12 @@ public partial class ThumbsPage : Page
 
         var settings = new GalleryJobFactory.Settings(AllUsers: AllUsers.IsChecked == true && _elevated,
             Web: WebCaches.IsChecked == true, FullIndex: FullIndex.IsChecked == true);
+        Remembered.Pages.Update(MemoryKey, m => m with
+        {
+            SaveFolder = target,
+            Options = Remembered.Options(m, ("webCaches", WebCaches, true), ("fullIndex", FullIndex, true), ("allUsers", AllUsers, _elevated)),
+        });
+        _reportPath = _caseFolder = null;
         SetBusy(true);
         Result.IsOpen = false;
         OpenReport.Visibility = Visibility.Collapsed;
@@ -56,22 +77,28 @@ public partial class ThumbsPage : Page
         {
             var r = await Task.Run(() => ThumbnailJob.Run(target, progress: progress,
                 options: GalleryJobFactory.Options(settings, _elevated, progress), ct: _cts.Token));
-            _reportPath = r.ReportPath;
+            _reportPath = r.ReportPath; _caseFolder = r.CaseFolder;
             var items = r.Scan.Items;
             var msg = $"{items.Count(i => i.Kind == "thumbnail"):N0} thumbnails ({items.Count(i => i.Status == OriginalStatus.Deleted):N0} with deleted originals), " +
                       $"{items.Count(i => i.Kind == "web"):N0} web images, {items.Count(i => i.Kind == "screenshot"):N0} screenshots, {items.Count(i => i.Kind == "opened"):N0} opened files.";
             var warnings = r.Scan.Warnings.Count + r.FolderWarnings.Count;
-            Show("Gallery ready", msg + (warnings > 0 ? $" {warnings} parts could not be read; see the notes in the report." : ""),
-                warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+            var message = msg + (warnings > 0 ? $" {warnings} parts could not be read; see the notes in the report." : "");
+            Show("Gallery ready", message, warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
             OpenReport.Visibility = Visibility.Visible;
             Status.Text = r.ReportPath;
+            RememberRun(warnings > 0 ? RunOutcome.Partial : RunOutcome.Ok, message);
         }
-        catch (OperationCanceledException) { Show("Cancelled", "Nothing was changed on this PC. A partly written case folder may remain.", InfoBarSeverity.Informational); }
+        catch (OperationCanceledException)
+        {
+            Show("Cancelled", "Nothing was changed on this PC. A partly written case folder may remain.", InfoBarSeverity.Informational);
+            RememberRun(RunOutcome.Stopped, "Stopped before the gallery was written.");
+        }
         catch (CaseLocationRejectedException ex) { Show("Pick another folder", ex.Message, InfoBarSeverity.Warning); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Warning(ex, "Gallery job could not write");
             Show("Could not save the report", ex.Message, InfoBarSeverity.Error);
+            RememberRun(RunOutcome.Failed, "The gallery could not be saved.");
         }
         finally { SetBusy(false); _cts?.Dispose(); _cts = null; }
     }
