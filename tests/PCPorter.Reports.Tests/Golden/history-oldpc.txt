@@ -1,0 +1,23 @@
+profile Firefox / default-release (bob, Firefox): live visits 4, first 2026-10-02 09:00, last 2026-10-02 09:15
+  Live: 4 visits, first 2026-10-02 09:00, last 2026-10-02 09:15
+  how Link: 2
+  how Typed: 2
+  searches 1, downloads 0 (on disk 0), bookmarks 1, tabs 1, form entries 1
+profile Google Chrome / Bob (bob, Chromium): live visits 21, first 2026-10-01 09:00, last 2026-10-01 11:19
+  Live: 21 visits, first 2026-10-01 09:00, last 2026-10-01 11:19
+  Carved: 8 visits, first 2026-10-01 11:00, last 2026-10-01 11:16
+  how Link: 4
+  how Typed: 24
+  how Redirect: 1
+  searches 1, downloads 2 (on disk 1), bookmarks 2, tabs 2, form entries 1
+profile Internet Explorer / Edge (legacy) / Default (bob, WebCache): live visits 2, first 2026-10-03 09:00, last 2026-10-03 09:03
+  Live: 2 visits, first 2026-10-03 09:00, last 2026-10-03 09:03
+  how Other: 2
+  searches 1, downloads 0 (on disk 0), bookmarks 0, tabs 0, form entries 0
+total: 35 visits (8 recovered), 3 searches, 2 downloads, 3 bookmarks, 3 tabs, 2 form entries
+top site news.example: 4
+top site wiki.example: 2
+top site duckduckgo.com: 1
+top site intranet.example: 1
+top site landing.example: 1
+notes 4, warnings 0

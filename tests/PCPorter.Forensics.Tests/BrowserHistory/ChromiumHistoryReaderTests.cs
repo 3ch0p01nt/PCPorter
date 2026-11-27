@@ -1,5 +1,6 @@
 using PCPorter.Forensics.BrowserHistory;
-using static PCPorter.Forensics.Tests.BrowserHistory.ChromiumFixture;
+using PCPorter.TestKit;
+using static PCPorter.TestKit.ChromiumFixture;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 

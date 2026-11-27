@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using PCPorter.Collectors.Sources;
 using PCPorter.Forensics.BrowserHistory;
+using PCPorter.TestKit;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 

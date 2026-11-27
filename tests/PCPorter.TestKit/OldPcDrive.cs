@@ -8,7 +8,7 @@ namespace PCPorter.TestKit;
 /// shortcuts and a mini winget catalog. Each planted case is one past bug or report rule; the list is in
 /// docs/plans/2026-11-26-regression-testing.md. "C:\" on the old PC maps to <see cref="Root"/>.
 /// </summary>
-public sealed class OldPcDrive : IDisposable
+public sealed partial class OldPcDrive : IDisposable
 {
     public const string Canary = "Hunter2Canary";
     public const string BobSid = "S-1-5-21-1111-2222-3333-1001";
@@ -127,6 +127,7 @@ public sealed class OldPcDrive : IDisposable
         smallest.CopyTo(Path.Combine(catRoot, "fixture.cat"));
 
         WingetCatalog(At(@"C:\Program Files\WindowsApps\Microsoft.Winget.Source_2026.1126.1.0_neutral__8wekyb3d8bbwe\Public\index.db"));
+        PlantBrowsers();
     }
 
     static RegSpec App(RegSpec k, string name, string? version, string? publisher)

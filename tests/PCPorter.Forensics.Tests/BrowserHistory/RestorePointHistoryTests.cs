@@ -1,6 +1,7 @@
 using PCPorter.Forensics.BrowserHistory;
-using PCPorter.Forensics.Tests.SearchIndex;
-using static PCPorter.Forensics.Tests.BrowserHistory.ChromiumFixture;
+using PCPorter.TestKit;
+using static PCPorter.TestKit.ChromiumFixture;
+using AdminFactAttribute = PCPorter.Forensics.Tests.SearchIndex.AdminFactAttribute;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 

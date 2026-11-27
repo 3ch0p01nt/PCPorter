@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using PCPorter.Collectors.Sources;
 using PCPorter.Forensics.BrowserHistory;
+using PCPorter.TestKit;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 

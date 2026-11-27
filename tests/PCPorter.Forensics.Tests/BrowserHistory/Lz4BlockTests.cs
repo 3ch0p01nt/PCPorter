@@ -1,5 +1,6 @@
 using System.Text;
 using PCPorter.Forensics.BrowserHistory;
+using PCPorter.TestKit;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 

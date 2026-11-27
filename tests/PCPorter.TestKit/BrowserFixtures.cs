@@ -1,9 +1,9 @@
 using System.Text;
 
-namespace PCPorter.Forensics.Tests.BrowserHistory;
+namespace PCPorter.TestKit;
 
-/// <summary>Synthetic browser profile trees for the history tests. Nothing here comes from a real PC.</summary>
-internal static class BrowserFixtures
+/// <summary>Synthetic browser profile trees for the history tests (unit and tier 3). Nothing here comes from a real PC.</summary>
+public static class BrowserFixtures
 {
     public static string TempDir()
     {
@@ -41,7 +41,7 @@ internal static class BrowserFixtures
 /// Builds a Chromium "History" database with the real schema (current Chrome: urls, visits, keyword_search_terms,
 /// downloads, downloads_url_chains, meta). Transitions are stored the way Chrome stores them (signed 32-bit).
 /// </summary>
-internal sealed class ChromiumFixture : IDisposable
+public sealed class ChromiumFixture : IDisposable
 {
     public const string Schema = """
         CREATE TABLE meta(key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
@@ -112,7 +112,7 @@ internal sealed class ChromiumFixture : IDisposable
 /// Builds a Firefox profile: places.sqlite and formhistory.sqlite with the real (current Firefox) schemas, and
 /// session files compressed with <see cref="Lz4Test"/>.
 /// </summary>
-internal sealed class FirefoxFixture : IDisposable
+public sealed class FirefoxFixture : IDisposable
 {
     public const string PlacesSchema = """
         CREATE TABLE moz_origins ( id INTEGER PRIMARY KEY, prefix TEXT NOT NULL, host TEXT NOT NULL, frecency INTEGER NOT NULL, recalc_frecency INTEGER NOT NULL DEFAULT 0, alt_frecency INTEGER, recalc_alt_frecency INTEGER NOT NULL DEFAULT 0, UNIQUE (prefix, host) );
@@ -209,7 +209,7 @@ internal sealed class FirefoxFixture : IDisposable
 }
 
 /// <summary>A minimal LZ4 encoder for tests: literal-only blocks, wrapped as mozLz4 when asked.</summary>
-internal static class Lz4Test
+public static class Lz4Test
 {
     public static byte[] LiteralBlock(byte[] data)
     {
@@ -230,7 +230,7 @@ internal static class Lz4Test
 }
 
 /// <summary>Builds a Chromium SNSS session file (Session_* or Tabs_*) command by command.</summary>
-internal sealed class SnssBuilder
+public sealed class SnssBuilder
 {
     readonly MemoryStream _ms = new();
 
@@ -285,11 +285,15 @@ internal sealed class SnssBuilder
 }
 
 /// <summary>Builds a Chromium "Web Data" database with the autofill table and the tables PCPorter must never read.</summary>
-internal static class WebDataFixture
+public static class WebDataFixture
 {
     public const string Canary = "CANARY-7f3a91";
 
-    public static void Create(string profileFolder, params (string Name, string Value, int Count, long Created, long LastUsed)[] autofill)
+    public static void Create(string profileFolder, params (string Name, string Value, int Count, long Created, long LastUsed)[] autofill) =>
+        Create(profileFolder, Canary, autofill);
+
+    /// <param name="canary">The secret planted in every table PCPorter must never read.</param>
+    public static void Create(string profileFolder, string canary, params (string Name, string Value, int Count, long Created, long LastUsed)[] autofill)
     {
         Directory.CreateDirectory(profileFolder);
         using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(profileFolder, "Web Data")};Pooling=False");
@@ -303,10 +307,10 @@ internal static class WebDataFixture
             CREATE TABLE local_ibans (guid VARCHAR, use_count INTEGER NOT NULL DEFAULT 0, use_date INTEGER NOT NULL DEFAULT 0, value_encrypted VARCHAR, nickname VARCHAR);
             CREATE TABLE autofill_profiles (guid VARCHAR PRIMARY KEY, label VARCHAR, date_modified INTEGER NOT NULL DEFAULT 0);
             INSERT INTO meta VALUES ('version', '130');
-            INSERT INTO credit_cards (guid, name_on_card, expiration_month, expiration_year, card_number_encrypted, nickname) VALUES ('g1', '{Canary}', 1, 2030, CAST('{Canary}' AS BLOB), '{Canary}');
-            INSERT INTO masked_credit_cards (id, network, last_four, nickname) VALUES ('m1', 'visa', '1111', '{Canary}');
-            INSERT INTO local_ibans (guid, value_encrypted, nickname) VALUES ('i1', '{Canary}', '{Canary}');
-            INSERT INTO autofill_profiles (guid, label) VALUES ('p1', '{Canary}');
+            INSERT INTO credit_cards (guid, name_on_card, expiration_month, expiration_year, card_number_encrypted, nickname) VALUES ('g1', '{canary}', 1, 2030, CAST('{canary}' AS BLOB), '{canary}');
+            INSERT INTO masked_credit_cards (id, network, last_four, nickname) VALUES ('m1', 'visa', '1111', '{canary}');
+            INSERT INTO local_ibans (guid, value_encrypted, nickname) VALUES ('i1', '{canary}', '{canary}');
+            INSERT INTO autofill_profiles (guid, label) VALUES ('p1', '{canary}');
             """;
         cmd.ExecuteNonQuery();
         foreach (var a in autofill)

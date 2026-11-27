@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using PCPorter.Forensics.BrowserHistory;
+using PCPorter.TestKit;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 
