@@ -124,11 +124,6 @@ public sealed class HistoryJobTests : IDisposable
         File.WriteAllBytes(Path.Combine(edge, "History"), Enumerable.Range(0, 8192).Select(i => (byte)(i * 7)).ToArray());
 
         FirefoxPlaces(Path.Combine(bob, @"AppData\Roaming\Mozilla\Firefox\Profiles\abcd.default-release"));
-        // Internet Explorer / legacy Edge is read by a later version: a note, not a profile.
-        var webCache = Path.Combine(bob, @"AppData\Local\Microsoft\Windows\WebCache");
-        Directory.CreateDirectory(webCache);
-        File.WriteAllBytes(Path.Combine(webCache, "WebCacheV01.dat"), [0]);
-
         return new FakeSystemSource(_drive, users:
         [
             new UserProfile("S-1-5-21-1-2-3-1001", "bob", bob, null, @"C:\Users\bob"),
@@ -157,7 +152,7 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal(T0, r.Scan.Coverage[1].Earliest);
         Assert.Contains(r.Scan.Warnings, w => w.Contains("Microsoft Edge") && w.Contains("bob"));
         Assert.Contains(r.Scan.Notes, n => n.Contains("carol"));
-        Assert.Contains(r.Scan.Notes, n => n.Contains("Internet Explorer / Edge (legacy)") && n.Contains("not read by this version"));
+        Assert.DoesNotContain(r.Scan.Notes, n => n.Contains("not read by this version"));
         Assert.DoesNotContain(r.Scan.Notes, n => n.StartsWith("Firefox history was found", StringComparison.Ordinal));
 
         using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
@@ -294,5 +289,104 @@ public sealed class HistoryJobTests : IDisposable
 
         var all = HistoryJob.Run(_out, live, new HistoryJobOptions(AllUsers: true, CurrentUserSid: "S-1-5-21-1-2-3-1002"), now: Now);
         Assert.Equal(5, all.Scan.Visits.Count);
+    }
+
+    const string WebCacheRel = @"AppData\Local\Microsoft\Windows\WebCache";
+    const string Ie = "Internet Explorer / Edge (legacy)";
+
+    /// <summary>bob's WebCacheV01.dat under <paramref name="root"/>: one visit, one search and one download.</summary>
+    static void IeCache(string root) => WebCacheFixture.Create(Path.Combine(root, @"Users\bob", WebCacheRel),
+        new WebCacheFixture.Container(1, "History",
+        [
+            new WebCacheFixture.Entry("Visited: bob@https://ie.example/", T0),
+            new WebCacheFixture.Entry("Visited: bob@https://www.bing.com/search?q=ie+tea", T0.AddMinutes(1)),
+        ]),
+        new WebCacheFixture.Container(2, "iedownload",
+        [
+            new WebCacheFixture.Entry("iedownload:https://ie.example/setup.exe", T0.AddMinutes(2),
+                ResponseHeaders: WebCacheFixture.DownloadHeaders("https://ie.example/setup.exe", "https://ie.example/", @"C:\Users\bob\Downloads\setup.exe")),
+        ]));
+
+    UserProfile Bob => new("S-1-5-21-1-2-3-1001", "bob", Path.Combine(_drive, "Users", "bob"), null, @"C:\Users\bob");
+
+    [Fact]
+    public void Offline_drives_read_internet_explorer_history_directly()
+    {
+        IeCache(_drive);
+        using var source = new FakeSystemSource(_drive, users: [Bob]);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+
+        Assert.Empty(r.Scan.Warnings);
+        Assert.Equal(["https://ie.example/", "https://www.bing.com/search?q=ie+tea"], r.Scan.Visits.Select(v => v.Url));
+        Assert.Equal(["ie tea"], r.Scan.Searches.Select(s => s.Terms));
+        Assert.Equal(@"C:\Users\bob\Downloads\setup.exe", Assert.Single(r.Scan.Downloads).TargetPath);
+        var coverage = Assert.Single(r.Scan.Coverage);
+        Assert.Equal((Ie, 2, T0), (coverage.Profile.Browser, coverage.Visits, coverage.Earliest));
+        Assert.Contains("Internet Explorer keeps", coverage.Note);
+        Assert.DoesNotContain(r.Scan.Notes, n => n.Contains("needs administrator"));
+        using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
+        Assert.Equal($"{Ie}/Default", db.Search("ie.example").First(a => a.Category == "WebHistory.Visit").Source);
+    }
+
+    [Fact]
+    public void Live_runs_without_administrator_rights_leave_a_note_and_take_no_shadow_copy()
+    {
+        IeCache(_drive);
+        var snapshots = new FakeSnapshots(_drive, _drive);
+        using var source = new FakeSystemSource(_drive, users: [Bob], live: true);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(CurrentUserSid: Bob.Sid, RestorePoints: false, Elevated: false, Snapshots: snapshots), now: Now);
+
+        Assert.Empty(r.Scan.Visits);
+        Assert.Contains(r.Scan.Notes, n => n.Contains("Internet Explorer / legacy Edge history needs administrator"));
+        Assert.Equal(0, snapshots.Created);
+    }
+
+    [Fact]
+    public void Live_runs_as_administrator_read_internet_explorer_history_from_a_temporary_shadow_copy()
+    {
+        var shadow = Path.Combine(_out, "shadow");                     // stands in for the shadow copy device
+        IeCache(shadow);
+        Directory.CreateDirectory(Path.Combine(_drive, @"Users\bob", WebCacheRel));
+        File.WriteAllBytes(Path.Combine(_drive, @"Users\bob", WebCacheRel, "WebCacheV01.dat"), [0]);    // the live file is locked: never read
+        var snapshots = new FakeSnapshots(_drive, shadow);
+        using var source = new FakeSystemSource(_drive, users: [Bob], live: true);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(CurrentUserSid: Bob.Sid, RestorePoints: false, Elevated: true, Snapshots: snapshots), now: Now);
+
+        Assert.Empty(r.Scan.Warnings);
+        Assert.Equal(2, r.Scan.Visits.Count);
+        Assert.Equal(Path.Combine(_drive, @"Users\bob", WebCacheRel), r.Scan.Visits[0].Profile.Folder);    // shown as on the PC
+        Assert.Equal((1, 1), (snapshots.Created, snapshots.Disposed));
+
+        // A shadow copy that cannot be made is a note, not a failed run.
+        var failing = new FakeSnapshots(_drive, shadow) { Fail = true };
+        var r2 = HistoryJob.Run(_out, source, new HistoryJobOptions(CurrentUserSid: Bob.Sid, RestorePoints: false, Elevated: true, Snapshots: failing), now: Now);
+        Assert.Empty(r2.Scan.Visits);
+        Assert.Contains(r2.Scan.Notes, n => n.Contains("Internet Explorer / legacy Edge history could not be read"));
+    }
+
+    /// <summary>A shadow copy provider whose "snapshot" maps the live drive folder onto another folder.</summary>
+    sealed class FakeSnapshots(string liveRoot, string shadowRoot) : PCPorter.Core.Snapshots.ISnapshotProvider
+    {
+        public int Created, Disposed;
+        public bool Fail;
+
+        public PCPorter.Core.Snapshots.ISnapshot Create(string volumeRoot)
+        {
+            if (Fail) throw new InvalidOperationException("Windows could not create a shadow copy of C:\\ (code 1: access denied).");
+            Created++;
+            return new Snap(this, liveRoot, shadowRoot);
+        }
+
+        sealed class Snap(FakeSnapshots owner, string liveRoot, string shadowRoot) : PCPorter.Core.Snapshots.ISnapshot
+        {
+            public string DeviceRoot => shadowRoot;
+            public string Map(string livePath) => livePath.StartsWith(liveRoot, StringComparison.OrdinalIgnoreCase)
+                ? shadowRoot + livePath[liveRoot.Length..]
+                : throw new ArgumentException($"{livePath} is not on the snapshot volume.");
+            public void Dispose() => owner.Disposed++;
+        }
     }
 }

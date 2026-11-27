@@ -3,6 +3,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using PCPorter.Collectors.Sources;
 using PCPorter.Core.Case;
+using PCPorter.Core.Snapshots;
 using PCPorter.Forensics.BrowserHistory;
 
 namespace PCPorter.Reports;
@@ -12,8 +13,10 @@ namespace PCPorter.Reports;
 /// <param name="ExtraNotes">Notes from the caller (e.g. "not running as administrator").</param>
 /// <param name="CurrentUserSid">Test hook: whose account a live run reads. Default: the account running PCPorter.</param>
 /// <param name="RestorePointRoots">Test hook: restore points to read instead of this PC's shadow copies.</param>
+/// <param name="Elevated">Test hook: whether a live run counts as administrator. Default: the real token.</param>
+/// <param name="Snapshots">Test hook: who makes the temporary shadow copy for Internet Explorer history. Default: Windows (VSS).</param>
 public sealed record HistoryJobOptions(bool AllUsers = false, bool RestorePoints = true, IReadOnlyList<string>? ExtraNotes = null, string? CurrentUserSid = null,
-    IReadOnlyList<RestorePointRoot>? RestorePointRoots = null);
+    IReadOnlyList<RestorePointRoot>? RestorePointRoots = null, bool? Elevated = null, ISnapshotProvider? Snapshots = null);
 
 public sealed record HistoryJobResult(string ReportPath, string CaseFolder, HistoryScan Scan, IReadOnlyList<string> FolderWarnings);
 
@@ -26,6 +29,7 @@ public static class HistoryJob
 {
     const string ChromiumRetention = "Chrome-family browsers keep about 90 days of visits.";
     const string FirefoxRetention = "Firefox keeps visits until its history file reaches a size limit, often months to years.";
+    const string WebCacheRetention = "Internet Explorer keeps 20 days of history by default (legacy Edge uses the same cache).";
 
     public static HistoryJobResult Run(string outRoot, ISystemSource source, HistoryJobOptions? options = null,
         IProgress<string>? progress = null, DateTimeOffset? now = null, CancellationToken ct = default)
@@ -48,12 +52,24 @@ public static class HistoryJob
         var tabs = new List<OpenTab>();
         var forms = new List<FormEntry>();
         var users = Users(source, options, notes);
+        Func<string, bool?> onDisk = path => StillOnDisk(source, path);
+
+        void Absorb(BrowserProfile profile, ProfileHistory h, string retention)
+        {
+            profiles.Add(profile);
+            visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
+            bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
+            warnings.AddRange(h.Warnings);
+            var liveVisits = h.Visits.Where(v => v.Origin == Origin.Live).ToList();      // how far back the browser itself keeps
+            coverage.Add(new ProfileCoverage(profile, liveVisits.Count,
+                liveVisits.Count == 0 ? null : liveVisits.Min(v => v.When), liveVisits.Count == 0 ? null : liveVisits.Max(v => v.When), retention));
+        }
 
         try
         {
             using (SourceFiles.Confine(source.ReadRoot))
             {
-                var later = new SortedSet<string>(StringComparer.Ordinal);
+                var webCaches = new List<BrowserProfile>();
                 foreach (var user in users)
                 {
                     ct.ThrowIfCancellationRequested();
@@ -61,32 +77,25 @@ public static class HistoryJob
                     foreach (var profile in BrowserProfileFinder.Find(user.UserName, user.ProfilePath!, warnings))
                     {
                         ct.ThrowIfCancellationRequested();
-                        if (profile.Family == BrowserFamily.WebCache) { later.Add(profile.Browser); continue; }
-                        profiles.Add(profile);
+                        if (profile.Family == BrowserFamily.WebCache) { webCaches.Add(profile); continue; }
                         progress?.Report($"{user.UserName}: {profile.Browser} ({profile.Name})");
                         try
                         {
-                            Func<string, bool?> onDisk = path => StillOnDisk(source, path);
                             var h = profile.Family == BrowserFamily.Firefox
                                 ? FirefoxHistoryReader.Read(profile, work, onDisk, ct)
                                 : ChromiumHistoryReader.Read(profile, work, onDisk, ct);
-                            visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
-                            bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
-                            warnings.AddRange(h.Warnings);
-                            var liveVisits = h.Visits.Where(v => v.Origin == Origin.Live).ToList();      // how far back the browser itself keeps
-                            coverage.Add(new ProfileCoverage(profile, liveVisits.Count,
-                                liveVisits.Count == 0 ? null : liveVisits.Min(v => v.When), liveVisits.Count == 0 ? null : liveVisits.Max(v => v.When),
-                                profile.Family == BrowserFamily.Firefox ? FirefoxRetention : ChromiumRetention));
+                            Absorb(profile, h, profile.Family == BrowserFamily.Firefox ? FirefoxRetention : ChromiumRetention);
                         }
                         catch (Exception ex) when (ex is not OperationCanceledException)
                         {
+                            profiles.Add(profile);
                             warnings.Add($"{profile.Browser} ({profile.Name}) for {user.UserName} could not be read: {FirstLine(ex.Message)}");
                             coverage.Add(new ProfileCoverage(profile, 0, null, null, "Could not be read; see the processing notes."));
                         }
                     }
                 }
-                foreach (var b in later)
-                    notes.Add($"{b} history was found but is not read by this version of PCPorter.");
+                if (webCaches.Count > 0)
+                    ReadWebCaches(source, options, webCaches, work, onDisk, notes, progress, ct, (p, h) => Absorb(p, h, WebCacheRetention));
 
                 if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && profiles.Count > 0)
                 {
@@ -152,7 +161,7 @@ public static class HistoryJob
             notes.Add("Restore points belong to the running PC, so they were not searched when reading another PC's drive.");
             return null;
         }
-        if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+        if (!IsElevated(options))
         {
             notes.Add("PCPorter is not running as administrator, so restore points were not searched for older history.");
             return null;
@@ -160,6 +169,69 @@ public static class HistoryJob
         var roots = RestorePointHistory.ShadowCopies();
         if (roots.Count == 0) notes.Add("No restore points of C: were found, so there was no older history to search.");
         return roots;
+    }
+
+    static bool IsElevated(HistoryJobOptions options) =>
+        options.Elevated ?? new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+
+    /// <summary>
+    /// Internet Explorer / legacy Edge history (WebCacheV01.dat). Offline: read straight from the drive. Live: Windows keeps
+    /// the file locked, so it is read only as administrator, from a temporary shadow copy of C: that PCPorter makes and
+    /// always removes again; otherwise a note says why it was left out.
+    /// </summary>
+    static void ReadWebCaches(ISystemSource source, HistoryJobOptions options, List<BrowserProfile> caches, string work,
+        Func<string, bool?> onDisk, List<string> notes, IProgress<string>? progress, CancellationToken ct, Action<BrowserProfile, ProfileHistory> absorb)
+    {
+        if (!source.IsLive)
+        {
+            foreach (var p in caches)
+            {
+                progress?.Report($"{p.User}: {p.Browser}");
+                absorb(p, WebCacheReader.Read(p, work, onDisk, ct));
+            }
+            return;
+        }
+        if (!IsElevated(options))
+        {
+            notes.Add("Internet Explorer / legacy Edge history needs administrator: Windows keeps its file locked, so it was not read. " +
+                      "Run PCPorter as administrator to include it.");
+            return;
+        }
+        ISnapshot? snap = null;
+        try
+        {
+            progress?.Report("Taking a temporary shadow copy to read Internet Explorer / legacy Edge history");
+            snap = (options.Snapshots ?? new VssSnapshotProvider()).Create(@"C:\");
+            using (SourceFiles.Confine(snap.DeviceRoot.TrimEnd('\\') + "\\"))
+                foreach (var p in caches)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    progress?.Report($"{p.User}: {p.Browser}");
+                    string inSnapshot;
+                    try { inSnapshot = snap.Map(p.Folder); }
+                    catch (ArgumentException)
+                    {
+                        notes.Add($"{p.Browser} history for {p.User} is not on C:, so it was not read.");
+                        continue;
+                    }
+                    absorb(p, WebCacheReader.Read(p, work, OnTheLiveDrive, ct, inSnapshot));
+                }
+        }
+        catch (Exception e) when (e is InvalidOperationException or UnauthorizedAccessException or System.Management.ManagementException or IOException
+                                      or System.Runtime.InteropServices.COMException)
+        {
+            notes.Add($"Internet Explorer / legacy Edge history could not be read ({FirstLine(e.Message)}).");
+        }
+        finally
+        {
+            snap?.Dispose();                                                    // the temporary shadow copy is always removed
+        }
+
+        // Whether a download is still on disk is a question about the PC now, not about the shadow copy.
+        bool? OnTheLiveDrive(string path)
+        {
+            using (SourceFiles.Confine(source.ReadRoot)) return onDisk(path);
+        }
     }
 
     /// <summary>Is a downloaded file still at its path on the scanned PC? Null when that cannot be checked.</summary>
