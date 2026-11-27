@@ -23,6 +23,7 @@ public sealed record HistoryJobResult(string ReportPath, string CaseFolder, Hist
 public static class HistoryJob
 {
     const string ChromiumRetention = "Chrome-family browsers keep about 90 days of visits.";
+    const string FirefoxRetention = "Firefox keeps visits until its history file reaches a size limit, often months to years.";
 
     public static HistoryJobResult Run(string outRoot, ISystemSource source, HistoryJobOptions? options = null,
         IProgress<string>? progress = null, DateTimeOffset? now = null, CancellationToken ct = default)
@@ -58,17 +59,21 @@ public static class HistoryJob
                     foreach (var profile in BrowserProfileFinder.Find(user.UserName, user.ProfilePath!, warnings))
                     {
                         ct.ThrowIfCancellationRequested();
-                        if (profile.Family != BrowserFamily.Chromium) { later.Add(profile.Browser); continue; }
+                        if (profile.Family == BrowserFamily.WebCache) { later.Add(profile.Browser); continue; }
                         profiles.Add(profile);
                         progress?.Report($"{user.UserName}: {profile.Browser} ({profile.Name})");
                         try
                         {
-                            var h = ChromiumHistoryReader.Read(profile, work, path => StillOnDisk(source, path), ct);
+                            Func<string, bool?> onDisk = path => StillOnDisk(source, path);
+                            var h = profile.Family == BrowserFamily.Firefox
+                                ? FirefoxHistoryReader.Read(profile, work, onDisk, ct)
+                                : ChromiumHistoryReader.Read(profile, work, onDisk, ct);
                             visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
                             bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
                             warnings.AddRange(h.Warnings);
                             coverage.Add(new ProfileCoverage(profile, h.Visits.Count,
-                                h.Visits.Count == 0 ? null : h.Visits.Min(v => v.When), h.Visits.Count == 0 ? null : h.Visits.Max(v => v.When), ChromiumRetention));
+                                h.Visits.Count == 0 ? null : h.Visits.Min(v => v.When), h.Visits.Count == 0 ? null : h.Visits.Max(v => v.When),
+                                profile.Family == BrowserFamily.Firefox ? FirefoxRetention : ChromiumRetention));
                         }
                         catch (Exception ex) when (ex is not OperationCanceledException)
                         {
@@ -164,7 +169,8 @@ public static class HistoryJob
     /// <summary>The counts the CLI prints (and --json emits).</summary>
     public static HistorySummary Summarize(HistoryJobResult r) => new(
         r.ReportPath, r.CaseFolder, r.Scan.Profiles.Count, r.Scan.Visits.Count, r.Scan.Searches.Count, r.Scan.Downloads.Count,
-        r.Scan.Visits.Count(v => v.Origin != Origin.Live), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count);
+        r.Scan.Visits.Count(v => v.Origin != Origin.Live), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
+        r.Scan.Bookmarks.Count, r.Scan.Tabs.Count, r.Scan.Forms.Count);
 
     /// <summary>0 when everything was read, 1 (partial) when anything was skipped with a warning.</summary>
     public static int ExitCode(HistoryJobResult r) =>
@@ -172,4 +178,4 @@ public static class HistoryJob
 }
 
 public sealed record HistorySummary(string Report, string CaseFolder, int Profiles, int Visits, int Searches, int Downloads,
-    int Recovered, int Notes, int Warnings);
+    int Recovered, int Notes, int Warnings, int Bookmarks, int Tabs, int Forms);

@@ -102,7 +102,7 @@ public static class ChromiumHistoryReader
     }
 
     /// <summary>The browser's own search-terms list, plus searches seen in visited addresses that it does not already hold (same terms, same minute).</summary>
-    static List<Search> MergeSearches(List<Search> keyword, List<Search> fromUrls)
+    internal static List<Search> MergeSearches(List<Search> keyword, List<Search> fromUrls)
     {
         static string Key(Search s) => s.Terms.ToLowerInvariant() + "|" + s.When.UtcTicks / TimeSpan.TicksPerMinute;
         var seen = keyword.Select(Key).ToHashSet();

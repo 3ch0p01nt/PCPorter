@@ -30,7 +30,7 @@ public static class HistoryCommand
         var offline = new Option<DirectoryInfo?>("--offline") { Description = "Read another PC's Windows drive instead of this PC (for example D:\\); shows every account" };
         var noRestore = new Option<bool>("--no-restore-points") { Description = "Do not look in existing restore points" };
         var jsonOpt = new Option<bool>("--json") { Description = "Print a machine-readable summary on stdout" };
-        var cmd = new Command("history", "Build a report of web browsing history (visits, searches, downloads) - read-only") { outOpt, allUsers, offline, noRestore, jsonOpt };
+        var cmd = new Command("history", "Build a report of web browsing history (visits, searches, downloads, bookmarks, tabs, form entries) - read-only") { outOpt, allUsers, offline, noRestore, jsonOpt };
         cmd.SetAction(parse =>
         {
             var json = parse.GetValue(jsonOpt);
@@ -53,7 +53,8 @@ public static class HistoryCommand
                 var s = HistoryJob.Summarize(r);
                 var code = HistoryJob.ExitCode(r);
                 Console.WriteLine(json ? JsonSerializer.Serialize(new { summary = s, exitCode = code }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) :
-                    $"Report: {s.Report}\n{s.Profiles} browser profiles: {s.Visits} visits, {s.Searches} searches, {s.Downloads} downloads; warnings {s.Warnings}");
+                    $"Report: {s.Report}\n{s.Profiles} browser profiles: {s.Visits} visits, {s.Searches} searches, {s.Downloads} downloads, " +
+                    $"{s.Bookmarks} bookmarks, {s.Tabs} tabs, {s.Forms} form entries; warnings {s.Warnings}");
                 if (!json) foreach (var w in r.Scan.Warnings.Concat(r.FolderWarnings)) Console.Error.WriteLine("Warning: " + Redactor.Redact(w));
                 Log.Information("history: {Profiles} profiles, {Visits} visits, {Warnings} warnings, exit {Code}", s.Profiles, s.Visits, s.Warnings, code);
                 return code;

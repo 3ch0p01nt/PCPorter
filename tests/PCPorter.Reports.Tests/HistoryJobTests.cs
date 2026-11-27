@@ -75,6 +75,27 @@ public sealed class HistoryJobTests : IDisposable
 
     const string Canary = "CANARY-5d1e77";
 
+    /// <summary>A Firefox profile: places.sqlite with two visits (one a search) and a bookmark; logins.json bait.</summary>
+    static void FirefoxPlaces(string profileFolder)
+    {
+        Directory.CreateDirectory(profileFolder);
+        using (var c = new SqliteConnection($"Data Source={Path.Combine(profileFolder, "places.sqlite")};Pooling=False"))
+        {
+            c.Open();
+            Sql(c, "CREATE TABLE moz_places (id INTEGER PRIMARY KEY, url LONGVARCHAR, title LONGVARCHAR, rev_host LONGVARCHAR, visit_count INTEGER DEFAULT 0, hidden INTEGER DEFAULT 0 NOT NULL, typed INTEGER DEFAULT 0 NOT NULL, frecency INTEGER DEFAULT -1 NOT NULL, last_visit_date INTEGER, guid TEXT)");
+            Sql(c, "CREATE TABLE moz_historyvisits (id INTEGER PRIMARY KEY, from_visit INTEGER, place_id INTEGER, visit_date INTEGER, visit_type INTEGER, session INTEGER, source INTEGER DEFAULT 0 NOT NULL, triggeringPlaceId INTEGER)");
+            Sql(c, "CREATE TABLE moz_bookmarks (id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER DEFAULT NULL, parent INTEGER, position INTEGER, title LONGVARCHAR, keyword_id INTEGER, folder_type TEXT, dateAdded INTEGER, lastModified INTEGER, guid TEXT)");
+            Sql(c, "CREATE TABLE moz_anno_attributes (id INTEGER PRIMARY KEY, name VARCHAR(32) UNIQUE NOT NULL)");
+            Sql(c, "CREATE TABLE moz_annos (id INTEGER PRIMARY KEY, place_id INTEGER NOT NULL, anno_attribute_id INTEGER, content LONGVARCHAR, flags INTEGER DEFAULT 0, expiration INTEGER DEFAULT 0, type INTEGER DEFAULT 0, dateAdded INTEGER DEFAULT 0, lastModified INTEGER DEFAULT 0)");
+            long pr = T0.ToUnixTimeMilliseconds() * 1000;
+            Sql(c, "INSERT INTO moz_places (id, url, title) VALUES (1, 'https://firefox.example/', 'Fox'), (2, 'https://www.bing.com/search?q=green+tea', 'green tea - Bing')");
+            Sql(c, $"INSERT INTO moz_historyvisits (place_id, visit_date, visit_type) VALUES (1, {pr + 180_000_000}, 2), (2, {pr + 240_000_000}, 1)");
+            Sql(c, "INSERT INTO moz_bookmarks (id, type, parent, title, guid) VALUES (1, 2, 0, '', 'root________'), (2, 2, 1, 'toolbar', 'toolbar_____')");
+            Sql(c, $"INSERT INTO moz_bookmarks (id, type, fk, parent, title, dateAdded, guid) VALUES (3, 1, 1, 2, 'Fox', {pr}, 'b')");
+        }
+        File.WriteAllText(Path.Combine(profileFolder, "logins.json"), Canary);
+    }
+
     FakeSystemSource Source()
     {
         var bob = Path.Combine(_drive, "Users", "bob");
@@ -102,6 +123,12 @@ public sealed class HistoryJobTests : IDisposable
         Directory.CreateDirectory(edge);
         File.WriteAllBytes(Path.Combine(edge, "History"), Enumerable.Range(0, 8192).Select(i => (byte)(i * 7)).ToArray());
 
+        FirefoxPlaces(Path.Combine(bob, @"AppData\Roaming\Mozilla\Firefox\Profiles\abcd.default-release"));
+        // Internet Explorer / legacy Edge is read by a later version: a note, not a profile.
+        var webCache = Path.Combine(bob, @"AppData\Local\Microsoft\Windows\WebCache");
+        Directory.CreateDirectory(webCache);
+        File.WriteAllBytes(Path.Combine(webCache, "WebCacheV01.dat"), [0]);
+
         return new FakeSystemSource(_drive, users:
         [
             new UserProfile("S-1-5-21-1-2-3-1001", "bob", bob, null, @"C:\Users\bob"),
@@ -119,27 +146,33 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal("History.html", Path.GetFileName(r.ReportPath));
         Assert.False(Directory.Exists(Path.Combine(r.CaseFolder, "work")));
 
-        Assert.Equal(3, r.Scan.Visits.Count);
-        Assert.Equal(["tea"], r.Scan.Searches.Select(s => s.Terms));
+        Assert.Equal(5, r.Scan.Visits.Count);
+        Assert.Equal(["tea", "green tea"], r.Scan.Searches.Select(s => s.Terms));
         var download = Assert.Single(r.Scan.Downloads);
         Assert.True(download.StillOnDisk);
-        Assert.Equal(["Google Chrome", "Microsoft Edge"], r.Scan.Coverage.Select(c => c.Profile.Browser));
-        Assert.Equal(3, r.Scan.Coverage[0].Visits);
-        Assert.Equal(T0, r.Scan.Coverage[0].Earliest);
+        Assert.Equal(["Firefox", "Google Chrome", "Microsoft Edge"], r.Scan.Coverage.Select(c => c.Profile.Browser));
+        Assert.Equal((2, T0.AddMinutes(3)), (r.Scan.Coverage[0].Visits, r.Scan.Coverage[0].Earliest));
+        Assert.Contains("Firefox keeps", r.Scan.Coverage[0].Note);
+        Assert.Equal(3, r.Scan.Coverage[1].Visits);
+        Assert.Equal(T0, r.Scan.Coverage[1].Earliest);
         Assert.Contains(r.Scan.Warnings, w => w.Contains("Microsoft Edge") && w.Contains("bob"));
         Assert.Contains(r.Scan.Notes, n => n.Contains("carol"));
+        Assert.Contains(r.Scan.Notes, n => n.Contains("Internet Explorer / Edge (legacy)") && n.Contains("not read by this version"));
+        Assert.DoesNotContain(r.Scan.Notes, n => n.StartsWith("Firefox history was found", StringComparison.Ordinal));
 
         using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
         var counts = db.CountByCategory();
-        Assert.Equal(3, counts["WebHistory.Visit"]);
-        Assert.Equal(1, counts["WebHistory.Search"]);
+        Assert.Equal(5, counts["WebHistory.Visit"]);
+        Assert.Equal(2, counts["WebHistory.Search"]);
         Assert.Equal(1, counts["WebHistory.Download"]);
-        Assert.Equal(1, counts["WebHistory.Bookmark"]);
+        Assert.Equal(2, counts["WebHistory.Bookmark"]);
         Assert.Equal(1, counts["WebHistory.Tab"]);
         Assert.Equal(1, counts["WebHistory.Form"]);
         var visit = db.Search("example.com").First(a => a.Category == "WebHistory.Visit");
         Assert.Equal("Google Chrome/Default", visit.Source);
         Assert.Equal("bob", visit.User);
+        var fox = db.Search("firefox.example").First(a => a.Category == "WebHistory.Visit");
+        Assert.Equal("Firefox/default-release", fox.Source);
     }
 
     [Fact]
@@ -148,7 +181,7 @@ public sealed class HistoryJobTests : IDisposable
         using var source = Source();
         var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
 
-        Assert.Equal(["https://tea.example/"], r.Scan.Bookmarks.Select(b => b.Url));
+        Assert.Equal(["https://firefox.example/", "https://tea.example/"], r.Scan.Bookmarks.Select(b => b.Url));
         Assert.Equal(["https://open.example/"], r.Scan.Tabs.Select(t => t.Url));
         Assert.Equal(["bob@example.com"], r.Scan.Forms.Select(f => f.Value));
         var html = File.ReadAllText(r.ReportPath);
@@ -165,7 +198,8 @@ public sealed class HistoryJobTests : IDisposable
         using var source = Source();
         var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
         var s = HistoryJob.Summarize(r);
-        Assert.Equal((2, 3, 1, 1, 0), (s.Profiles, s.Visits, s.Searches, s.Downloads, s.Recovered));
+        Assert.Equal((3, 5, 2, 1, 0), (s.Profiles, s.Visits, s.Searches, s.Downloads, s.Recovered));
+        Assert.Equal((2, 1, 1), (s.Bookmarks, s.Tabs, s.Forms));
         Assert.True(s.Warnings >= 1);
         Assert.Equal(PCPorter.Core.Cli.ExitCodes.Partial, HistoryJob.ExitCode(r));
 
@@ -183,6 +217,6 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Empty(mine.Scan.Visits);                               // carol only, and her profile is unavailable
 
         var all = HistoryJob.Run(_out, live, new HistoryJobOptions(AllUsers: true, CurrentUserSid: "S-1-5-21-1-2-3-1002"), now: Now);
-        Assert.Equal(3, all.Scan.Visits.Count);
+        Assert.Equal(5, all.Scan.Visits.Count);
     }
 }
