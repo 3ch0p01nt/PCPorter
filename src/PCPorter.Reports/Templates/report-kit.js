@@ -141,6 +141,8 @@ const PCK = (() => {
         b.setAttribute("aria-sort", i === sortCol ? (desc ? "descending" : "ascending") : "none");
       });
       spacer.style.height = view.length * RH + "px";
+      vp.style.height = Math.min(H, view.length * RH + 2) + "px";      // short lists do not leave a tall empty box
+      vp.hidden = view.length === 0;
       vp.setAttribute("aria-rowcount", String(view.length));
       count.textContent = `${view.length.toLocaleString()} of ${all.length.toLocaleString()} shown`;
       empty.hidden = view.length > 0;
@@ -175,7 +177,8 @@ const PCK = (() => {
       sel = Math.max(0, Math.min(view.length - 1, i));
       if (scroll) {
         const y = sel * RH;
-        if (y < vp.scrollTop) vp.scrollTop = y; else if (y + RH > vp.scrollTop + H) vp.scrollTop = y + RH - H;
+        const vh = vp.clientHeight || H;
+        if (y < vp.scrollTop) vp.scrollTop = y; else if (y + RH > vp.scrollTop + vh) vp.scrollTop = y + RH - vh;
         draw();
       }
       for (const [k, n] of rendered) n.classList.toggle("sel", k === sel);
