@@ -30,6 +30,13 @@ public class RedactorTests
     [InlineData("git ghp_abcdefghijklmnopqrstuvwxyz0123456789", "git ***")]
     [InlineData("x glpat-abcdefghijklmnopqrst y", "x *** y")]
     [InlineData("slack xoxb-1234567890-abcdef", "slack ***")]
+    [InlineData("schtasks /create /tn Sync /tr c:\\s.exe /ru bob /rp Hunter2 /sc daily", "schtasks /create /tn Sync /tr c:\\s.exe /ru bob /rp *** /sc daily")]
+    [InlineData("mysql -u root -pHunter2 shop", "mysql -u root -p*** shop")]
+    [InlineData("\"C:\\mysql\\bin\\mysqldump.exe\" -uroot -pS3cr3t shop", "\"C:\\mysql\\bin\\mysqldump.exe\" -uroot -p*** shop")]
+    [InlineData("mariadb-dump -h db -p'pa ss' x", "mariadb-dump -h db -p*** x")]
+    [InlineData("open https://x/cb?next=%2Fapp%3Ftoken%3Dabc123%26x%3D1", "open https://x/cb?next=%2Fapp%3Ftoken%3D***%26x%3D1")]
+    [InlineData("go https://x/?r=https%253A%252F%252Fy%253Fpassword%253DHunter2%2526a%253Db", "go https://x/?r=https%253A%252F%252Fy%253Fpassword%253D***%2526a%253Db")]
+    [InlineData("go https://x/?r=%2Fa%3Fclient_secret%3Ds%252Bx end", "go https://x/?r=%2Fa%3Fclient_secret%3D*** end")]
     public void Masks_secrets(string input, string expected) => Assert.Equal(expected, Redactor.Redact(input));
 
     [Theory]
@@ -38,5 +45,8 @@ public class RedactorTests
     [InlineData("")]
     [InlineData("monkey=banana keyboard.exe /passive")]
     [InlineData("net user")]
+    [InlineData("mysql -h db -P3306 -u root shop")]                // capital -P is the port
+    [InlineData("tool.exe -protocol tcp")]                         // -p glued text outside a MySQL client
+    [InlineData("open https://x/?q=keyboard%3Dnice%26monkey%3Dbanana")]
     public void Leaves_benign_text_alone(string input) => Assert.Equal(input, Redactor.Redact(input));
 }
