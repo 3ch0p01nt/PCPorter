@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PCPorter.Core\PCPorter.Core.csproj" />
+    <ProjectReference Include="..\PCPorter.Security\PCPorter.Security.csproj" />
+    <ProjectReference Include="..\PCPorter.Forensics\PCPorter.Forensics.csproj" />
+    <ProjectReference Include="..\PCPorter.Reports\PCPorter.Reports.csproj" />
+    <ProjectReference Include="..\PCPorter.Collectors\PCPorter.Collectors.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>PCPorter</AssemblyName>
+    <RootNamespace>PCPorter.App</RootNamespace>
+    <Product>PCPorter</Product>
+  </PropertyGroup>
+
+</Project>
+

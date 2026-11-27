@@ -1,0 +1,43 @@
+PCPorter - how to run it on your PC
+===================================
+
+1. Copy this whole PCPorter folder to the PC (or run it straight from the USB/backup drive).
+   Keep all 7 files together: PCPorter.exe needs the .dll files next to it.
+   Nothing needs to be installed first (.NET is built in).
+
+2. Right-click PCPorter.exe > Run as administrator.
+   Windows SmartScreen may say "Windows protected your PC" because the program is not code-signed:
+   click "More info" > "Run anyway". (This is your own build.)
+
+3. On the Home screen pick:
+   - "Check health and security": antivirus, Windows protections, startup programs, apps to reinstall,
+     hardware health. Read-only: nothing on the PC is changed. Produces HealthReport.html.
+   - "Explore my PC's history": the picture gallery (thumbnail cache, browser caches, screenshots).
+   Save the results to your backup drive (PCPorter refuses OneDrive/cloud-synced folders on purpose).
+
+4. Old PC that won't start? Connect its drive to a working PC (USB adapter), then in
+   "Check health and security" choose "Another PC's drive". If it's BitLocker-locked, unlock it in
+   File Explorer first with the recovery key (aka.ms/myrecoverykey).
+
+Optional: command line (open Terminal as administrator in this folder)
+   .\PCPorter.exe selftest
+   .\PCPorter.exe scan --out E:\
+   .\PCPorter.exe thumbs --out E:\
+   Exit codes: 0 ok, 1 partial, 2 failed, 3 bad arguments, 4 not elevated, 5 findings (--fail-on), 6 cancelled.
+
+Optional: track this PC over time (baseline.ps1, for the developer)
+   Open PowerShell as administrator in this folder and run:
+      powershell -ExecutionPolicy Bypass -File .\baseline.ps1
+   It runs a scan and saves a summary with counts only (no names, paths or web addresses) to
+   C:\PCPorterCases\baselines. From the second run on it lists what changed since the baseline:
+   new serious findings, security checks that changed, counts that moved more than 10%, slower scans.
+   When the changes are expected (new PCPorter version, apps you installed), accept them:
+      powershell -ExecutionPolicy Bypass -File .\baseline.ps1 -Accept
+   The summaries stay on this PC.
+
+Where things go
+   Results:  <your folder>\PCPorter\<PC name>_<date>\  (HealthReport.html, Thumbnails.html, case.db)
+             These folders can only be opened by you and administrators.
+   Logs:     C:\ProgramData\PCPorter\logs (when run as administrator)
+
+Not built yet: Backup/restore ("Move to my new PC"), web history, timeline and passwords reports.

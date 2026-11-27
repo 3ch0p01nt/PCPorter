@@ -1,0 +1,4 @@
+These three files are copied unchanged from microsoft/winget-cli (src/AppInstallerCLITests/TestData),
+MIT License, Copyright (c) Microsoft Corporation. They are winget's own expected results for its
+name/publisher normalization, used to check PCPorter's port (WingetNormalizer).
+https://github.com/microsoft/winget-cli/blob/master/LICENSE

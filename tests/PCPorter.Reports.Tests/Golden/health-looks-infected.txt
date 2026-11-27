@@ -1,0 +1,73 @@
+i
+PC health and security · OLD-LAPTOP
+Worth a look
+Nothing urgent, but some items are worth checking.
+2 worth a look
+3 unusual
+1 app to reinstall
+Scanned <time>
+Check these things
+Check "updater": updater starts with Windows and we couldn't confirm who made it. This is often harmless. If you don't recognize it, look it up or ask someone you trust before removing it.
+Why is this here?
+Runs from a user folder and is not signed.
+Check "SyncTask": SyncTask starts with Windows and we couldn't confirm who made it. This is often harmless. If you don't recognize it, look it up or ask someone you trust before removing it.
+Why is this here?
+This scheduled task is hidden from Task Scheduler (its security information is missing).
+Security
+Antivirus
+[OK] Microsoft Defender: Protected by Microsoft Defender, which is built into Windows. Your new PC has it already.
+Windows protections
+[OK] Firewall: The firewall is on for every type of network.
+[OK] User Account Control: User Account Control is on.
+[OK] Windows updates: Windows installed updates yesterday.
+Programs that start with Windows
+[Worth a look] updater: updater starts with Windows and we couldn't confirm who made it. This is often harmless. If you don't recognize it, look it up or ask someone you trust before removing it.
+Why is this here?
+Runs from a user folder and is not signed. Found in HKCU\Software\Microsoft\Windows\CurrentVersion\Run: C:\Users\bob\AppData\Roaming\upd\updater.exe --password=***
+[Worth a look] SyncTask: SyncTask starts with Windows and we couldn't confirm who made it. This is often harmless. If you don't recognize it, look it up or ask someone you trust before removing it.
+Why is this here?
+This scheduled task is hidden from Task Scheduler (its security information is missing). Found in Task Scheduler\Microsoft: C:\ProgramData\g.exe -q
+1 unusual item from an unknown maker
+[Unusual] OldToolbar: OldToolbar is turned off, so it does not start. It was flagged because: Not signed.
+Why is this here?
+Not signed. Found in HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run: C:\Users\bob\AppData\Local\tb\tb.exe
+1 unusual item from Microsoft Windows Publisher
+[Unusual] Sense: Sense is set up in an uncommon way, but it comes from Microsoft Windows Publisher. No action needed unless you have problems.
+Why is this here?
+The service's program path has spaces but no quotes. Found in HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run: C:\Program Files\Windows Defender Advanced Threat Protection\MsSense.exe
+1 unusual item from Contoso
+[Unusual] <script>alert(1)</script>: <script>alert(1)</script> is set up in an uncommon way, but it comes from Contoso. No action needed unless you have problems.
+Why is this here?
+Name from the scanned PC must be escaped. Found in HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run: x.exe
+Moving to your new PC
+1 app to install again on the new PC. 0 can be installed automatically; the rest need a download from the maker's website.
+App list
+App | Maker | Version | How to get it
+Stack | Contoso | 1.0.10 (3 versions installed) | Maker's website
+Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+Hardware health
+16 GB memory · 8 processor threads · x64
+Drives
+[OK] Samsung SSD 990 (1 TB, SSD): Healthy (about 97% of rated life left).
+[OK] Drive C:: 400 GB free of 1 TB (40% free).
+[OK] Crashes: No crashes or unexpected restarts in the last 90 days.
+Technical details
+Show technical details
+Checks that ran
+Check | Result | Found | Time | Note
+PC profile and health | Ok | 1 | #.# s |
+Antivirus | Ok | 1 | #.# s |
+Security settings | Ok | 3 | #.# s |
+Programs that start automatically | Ok | 5 | #.# s |
+Installed apps | Ok | 3 | #.# s |
+Settings evidence
+Firewall | firewall=ok
+User Account Control | uac=ok
+Windows updates | windows-update=ok
+PC details
+Windows | Windows 11 Home 25H2 (build 26200.100)
+Edition | Core
+Architecture | x64
+TPM version | 2.0
+Scan <id>. The full data is in the case folder (case.db and the scan folder).
+Read-only scan. Nothing was changed or sent anywhere. Made by PCPorter.

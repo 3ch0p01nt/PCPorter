@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+.vs/
+publish/
+TestResults/
+*.log
+tests/fixtures/local-only/
+.claude/worktrees/
+
+# golden-file test output
+*.received.txt

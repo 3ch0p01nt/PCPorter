@@ -1,0 +1,60 @@
+<Page x:Class="PCPorter.App.Views.ScanPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Health and security">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" MaxWidth="900" HorizontalAlignment="Left">
+      <TextBlock Text="Check health and security" FontSize="28" FontWeight="SemiBold" />
+      <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,20"
+                 Text="Looks at installed programs, your antivirus, programs that start automatically, and the PC's hardware health. It only reads - nothing on the PC is changed - and it does not copy any registry files." />
+
+      <StackPanel x:Name="Inputs">
+      <TextBlock Text="What to scan" FontWeight="SemiBold" />
+      <RadioButton x:Name="ThisPc" GroupName="Src" IsChecked="True" Margin="0,6,0,0" Content="This PC" />
+      <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+        <RadioButton x:Name="OtherDrive" GroupName="Src" Content="Another PC's drive (old PC that won't start):" VerticalAlignment="Center" />
+        <ComboBox x:Name="Drives" Margin="8,0,0,0" MinWidth="200" IsEnabled="{Binding IsChecked, ElementName=OtherDrive}" AutomationProperties.Name="Drive with the other PC's Windows" />
+        <ui:Button Margin="8,0,0,0" Content="Refresh" Click="RefreshDrives_Click" ToolTip="Look again for connected drives that hold Windows" />
+      </StackPanel>
+      <TextBlock x:Name="DriveHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,4,0,12" />
+
+      <TextBlock Text="Save the results to" FontWeight="SemiBold" />
+      <Grid Margin="0,6,0,16">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <ui:TextBox x:Name="OutFolder" AutomationProperties.Name="Folder to save the results in" />
+        <ui:Button Grid.Column="1" Margin="8,0,0,0" Content="Browse..." Click="Browse_Click" AutomationProperties.HelpText="Pick the folder for the results, ideally on your backup drive" />
+      </Grid>
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal">
+        <ui:Button x:Name="StartButton" Appearance="Primary" Content="Start the check" Icon="{ui:SymbolIcon ShieldCheckmark24}" Click="Start_Click" />
+        <ui:Button x:Name="CancelButton" Margin="8,0,0,0" Content="Cancel" IsEnabled="False" Click="Cancel_Click" />
+      </StackPanel>
+
+      <TextBlock x:Name="Step" Margin="0,16,0,0" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite" />
+      <TextBlock x:Name="Elapsed" Opacity="0.7" FontSize="12" />
+      <ItemsControl x:Name="Cards" Margin="0,8,0,0">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <ui:Card Margin="0,0,10,10" Width="200" AutomationProperties.Name="{Binding Title}" AutomationProperties.HelpText="{Binding State}">
+              <StackPanel>
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding State}" Opacity="0.8" TextWrapping="Wrap" Margin="0,4,0,0" />
+              </StackPanel>
+            </ui:Card>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <ui:InfoBar x:Name="Banner" Margin="0,8,0,0" IsOpen="False" IsClosable="False" Severity="Informational"
+                  Title="Flagged does not mean harmful" Message="Many legitimate programs look unusual. Each finding explains why it was flagged and common harmless causes." />
+      <ui:InfoBar x:Name="Result" Margin="0,8,0,0" IsOpen="False" IsClosable="False" />
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <ui:Button x:Name="OpenReport" Content="Open the report" Icon="{ui:SymbolIcon Open24}" Visibility="Collapsed" Click="OpenReport_Click" />
+        <ui:Button x:Name="OpenFolder" Margin="8,0,0,0" Content="Open the case folder" Icon="{ui:SymbolIcon FolderOpen24}" Visibility="Collapsed" Click="OpenFolder_Click" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Page>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Images viewed on this PC - PCPorter</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg:#f6f7f9; --panel:#fff; --text:#1b1d21; --muted:#5d6470; --line:#e2e5ea; --accent:#2f6fde;
+    --warn-bg:#fff6e0; --warn-line:#f0c96a; --ok:#1f7a44; --del:#b8361f; --unr:#8a5a00; --unk:#5f6672; --rec:#7a43c9;
+    --shadow:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.05); }
+  :root[data-theme="dark"] {
+    --bg:#15171b; --panel:#1e2126; --text:#e8eaee; --muted:#a2a9b5; --line:#30343b; --accent:#7aa6ff;
+    --warn-bg:#2d2615; --warn-line:#6b5a26; --ok:#53c784; --del:#ff8a75; --unr:#e0b050; --unk:#a2a9b5; --rec:#bd95ff; --shadow:none; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 "Segoe UI Variable","Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { position:sticky; top:0; z-index:5; background:var(--panel); border-bottom:1px solid var(--line); padding:12px 24px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:20px; margin:0; font-weight:600; }
+  .meta { color:var(--muted); font-size:12.5px; }
+  .spacer { flex:1; }
+  button, select, input { font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  button { cursor:pointer; }
+  button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  main { padding:16px 24px 48px; max-width:1680px; margin:0 auto; }
+  .banner { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:8px; padding:10px 14px; margin-bottom:12px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; box-shadow:var(--shadow); text-align:left; }
+  .tile .n { font-size:24px; font-weight:600; }
+  .tile .l { color:var(--muted); font-size:12.5px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  .toolbar input[type=search] { flex:1 1 260px; min-width:200px; }
+  .count { color:var(--muted); margin-left:auto; }
+  .hist { display:flex; align-items:flex-end; gap:2px; height:46px; margin:6px 0 10px; }
+  .hist button { flex:1; min-width:3px; padding:0; border:0; background:var(--accent); opacity:.45; border-radius:2px 2px 0 0; }
+  .hist button[aria-pressed="true"] { opacity:1; }
+  .hist-label { display:flex; justify-content:space-between; color:var(--muted); font-size:11.5px; margin-top:-6px; margin-bottom:8px; }
+  #scroller { position:relative; }
+  .row { position:absolute; left:0; right:0; display:grid; gap:12px; }
+  .ghead { position:absolute; left:0; right:0; height:36px; display:flex; align-items:center; gap:8px; font-weight:600; border-bottom:1px solid var(--line); }
+  .ghead .gc { color:var(--muted); font-weight:400; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; cursor:pointer; box-shadow:var(--shadow); display:flex; flex-direction:column; position:relative; height:206px; }
+  .card.sel { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+  .card .img { height:140px; display:flex; align-items:center; justify-content:center; background:repeating-conic-gradient(var(--line) 0 25%,transparent 0 50%) 50%/16px 16px; }
+  .card img { max-width:100%; max-height:100%; object-fit:contain; }
+  .card .noimg { color:var(--muted); font-size:12px; padding:8px; text-align:center; }
+  .card .cap { padding:5px 8px; font-size:12px; }
+  .card .name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card .pick { position:absolute; top:6px; left:6px; width:18px; height:18px; }
+  .card .dup { position:absolute; top:6px; right:6px; font-size:11px; background:var(--panel); border:1px solid var(--line); border-radius:99px; padding:0 6px; }
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:0 6px; border-radius:99px; border:1px solid currentColor; margin-right:3px; white-space:nowrap; }
+  .badge::before { content:""; width:7px; height:7px; display:inline-block; background:currentColor; }
+  .s-Exists { color:var(--ok); } .s-Exists::before { border-radius:50%; }
+  .s-Deleted { color:var(--del); } .s-Deleted::before { transform:rotate(45deg); }
+  .s-Unreachable { color:var(--unr); } .s-Unreachable::before { clip-path:polygon(50% 0,100% 100%,0 100%); }
+  .s-Unknown { color:var(--unk); } .s-Unknown::before { border-radius:2px; opacity:.5; }
+  .s-rec { color:var(--rec); }
+  .tag { color:var(--accent); }
+  .empty { color:var(--muted); padding:40px; text-align:center; }
+  dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--text); width:min(1100px,96vw); padding:0; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  .dlg-head { display:flex; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); gap:8px; }
+  .dlg-head h2 { font-size:15px; margin:0; flex:1; word-break:break-all; }
+  .dlg-body { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:14px; padding:14px; }
+  .big { background:repeating-conic-gradient(var(--line) 0 25%,transparent 0 50%) 50%/16px 16px; border-radius:8px; height:min(60vh,560px); overflow:hidden; position:relative; cursor:zoom-in; display:flex; align-items:center; justify-content:center; }
+  .big img { max-width:100%; max-height:100%; transform-origin:0 0; user-select:none; -webkit-user-drag:none; }
+  .big.zoomed { cursor:grab; display:block; } .big.zoomed img { max-width:none; max-height:none; image-rendering:pixelated; }
+  .sizes { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .sizes button { display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px; font-size:11px; }
+  .sizes img { max-width:72px; max-height:56px; }
+  dl { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:5px 12px; font-size:13px; }
+  dt { color:var(--muted); } dd { margin:0; word-break:break-all; }
+  .src li { font-size:12.5px; color:var(--muted); }
+  details { margin-top:22px; } summary { cursor:pointer; color:var(--muted); }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; margin-top:8px; }
+  th, td { border-bottom:1px solid var(--line); padding:4px 8px; text-align:left; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  #print { display:none; }
+  @media (max-width:760px) { .dlg-body { grid-template-columns:1fr; } }
+  @media print {
+    header, .toolbar, .hist, .hist-label, #scroller, .count, dialog, details, #notes-actions { display:none !important; }
+    body { background:#fff; color:#000; } .tile { box-shadow:none; }
+    #print { display:grid !important; grid-template-columns:repeat(4,1fr); gap:10px; }
+    #print figure { margin:0; break-inside:avoid; border:1px solid #ccc; padding:6px; font-size:10px; }
+    #print img { max-width:100%; max-height:150px; display:block; margin:0 auto 4px; }
+    .print-head { display:block !important; font-size:11px; margin-bottom:8px; }
+  }
+  .print-head { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Images viewed on this PC</h1>
+  <div class="meta" id="meta"></div>
+  <div class="spacer"></div>
+  <label>Theme <select id="theme" aria-label="Colour theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</header>
+<main>
+  <div class="print-head" id="print-head"></div>
+  <details class="banner" role="note" id="howto">
+    <summary><strong>How to read this report</strong></summary>
+    Each picture comes from a record Windows or an app kept. The badge under each picture says what that record proves -
+    for example a File Explorer thumbnail proves Windows showed the file, a browser cache entry proves a web page loaded it. Thumbnails stay after the
+    original is deleted. A missing record does not prove something was never viewed. Times say exactly what they measure; none of them is a guaranteed viewing time.
+  </details>
+  <div class="banner" id="notes" role="status" hidden></div>
+
+  <section class="tiles" id="tiles" aria-label="Summary - click a tile to filter"></section>
+
+  <div class="toolbar" role="search">
+    <input type="search" id="q" placeholder="Search path, web address or ID" aria-label="Search">
+    <select id="kind" aria-label="Source"></select>
+    <select id="status" aria-label="Original file">
+      <option value="">Original: any</option><option value="Deleted">Original deleted</option><option value="Exists">Original still exists</option>
+      <option value="Unreachable">Original unreachable</option><option value="Unknown">Original unknown</option>
+    </select>
+    <select id="pic" aria-label="Picture"><option value="">Picture: any</option><option value="yes">Has a picture</option><option value="no">No picture kept</option></select>
+    <select id="size" aria-label="Size"><option value="">Any size</option></select>
+    <select id="user" aria-label="User"><option value="">All users</option></select>
+    <select id="extra" aria-label="More filters">
+      <option value="">All records</option><option value="free">Found in free space</option><option value="tagged">Tagged</option>
+      <option value="Important">Tagged Important</option><option value="Review">Tagged Review</option><option value="dups">Has similar pictures</option>
+    </select>
+    <label><input type="checkbox" id="collapse"> One per similar group</label>
+    <select id="group" aria-label="Group by"><option value="">No grouping</option><option value="folder">Group by folder / website</option><option value="status">Group by original status</option><option value="month">Group by month</option><option value="kind">Group by source</option></select>
+    <select id="sort" aria-label="Sort"><option value="path">Sort: path</option><option value="size">Sort: largest first</option><option value="status">Sort: deleted first</option><option value="date">Sort: newest first</option></select>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="toolbar" id="sel-bar">
+    <span id="sel-count">0 selected</span>
+    <button id="sel-all">Select all shown</button><button id="sel-none">Clear selection</button>
+    <button id="tag-imp">Tag Important</button><button id="tag-rev">Tag Review</button><button id="tag-clear">Remove tags</button>
+    <button id="csv">Export CSV</button><button id="printbtn">Print contact sheet</button>
+    <button id="clear">Clear filters</button>
+  </div>
+  <div class="hist" id="hist" role="group" aria-label="Pictures per month - click a bar to filter"></div>
+  <div class="hist-label" id="hist-label"></div>
+
+  <div id="scroller" role="grid" aria-label="Pictures" aria-rowcount="0"></div>
+  <div class="empty" id="empty" hidden></div>
+  <div class="sr" id="live" aria-live="polite"></div>
+  <div id="print"></div>
+
+  <details>
+    <summary>Cache files read and processing notes</summary>
+    <table id="files"><thead><tr><th>User</th><th>File</th><th>Format</th><th>Pictures</th><th>Without picture</th><th>Warnings</th></tr></thead><tbody></tbody></table>
+    <ul id="warnings"></ul>
+  </details>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlg-title">
+  <div class="dlg-head">
+    <button id="dlg-prev" aria-label="Previous picture">Previous</button>
+    <span id="dlg-pos" class="meta"></span>
+    <button id="dlg-next" aria-label="Next picture">Next</button>
+    <h2 id="dlg-title"></h2>
+    <button id="dlg-copy">Copy path</button>
+    <button id="dlg-close" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body">
+    <div>
+      <div class="big" id="big" title="Click to zoom to actual pixels; scroll to zoom; drag to move"><img id="dlg-img" alt=""></div>
+      <div class="sizes" id="dlg-sizes" role="group" aria-label="Stored sizes"></div>
+    </div>
+    <div>
+      <dl id="dlg-dl"></dl>
+      <h3 style="font-size:13px;margin:12px 0 4px">Where the times come from</h3>
+      <ul class="src" id="dlg-src"></ul>
+      <div id="dlg-dups"></div>
+    </div>
+  </div>
+</dialog>
+
+<script type="application/json" id="data">__PCPORTER_DATA__</script>
+<script>
+(() => {
+  "use strict";
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const items = data.items;
+  const IMG = (data.imagesFolder || "thumbs") + "/";
+  const $ = id => document.getElementById(id);
+  const el = (tag, props = {}, kids = []) => { const e = document.createElement(tag); Object.assign(e, props); kids.forEach(k => e.append(k)); return e; };
+  const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+                  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked (private mode / file://) */ } } };
+  const fileUrl = f => IMG + f.split("/").map(encodeURIComponent).join("/");
+  const baseName = p => p ? p.split(/[\\/]/).filter(Boolean).pop() : null;
+  const hostOf = u => { try { return new URL(u).hostname || "unknown"; } catch { return "unknown"; } };
+  const folderOf = p => { if (!p) return null; const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/")); return i > 0 ? p.slice(0, i) : p; };
+  const fmt = d => d ? `${new Date(d).toLocaleString()} (UTC ${new Date(d).toISOString().replace("T", " ").slice(0, 16)})` : "unknown";
+  const statusText = { Exists: "Original still exists", Deleted: "Original deleted", Unreachable: "Original unreachable", Unknown: "Original unknown" };
+  const statusHelp = {
+    Exists: "The original file or folder is still at this path on the scanned PC.",
+    Deleted: "The folder could be read and the original is no longer in it.",
+    Unreachable: "The drive is missing, access was denied, or it is a network location, so PCPorter could not check.",
+    Unknown: "No record says which file this picture came from." };
+  const evidenceText = { Displayed: "Windows showed it (thumbnail)", Opened: "Opened in an app", LoadedByWebPage: "Loaded by a web page", OnScreen: "Was on screen (screenshot)", Downloaded: "Saved or received" };
+  const kindText = { thumbnail: "File Explorer thumbnails", icon: "Program icons", web: "Web browser caches", screenshot: "Screenshots", opened: "Recently opened files" };
+  const order = { Deleted: 0, Unreachable: 1, Unknown: 2, Exists: 3 };
+  const tags = store.get("pcporter-tags:" + data.meta.generatedUtc, {});
+  const selected = new Set();
+  items.forEach((i, n) => { i._n = n; i._lc = ((i.originalPath || "") + " " + (i.url || "") + " " + (i.cacheId || "")).toLowerCase();
+    i._t = i.dates ? Date.parse(i.dates.before || i.dates.after || "") || 0 : 0; i._m = i._t ? new Date(i._t).toISOString().slice(0, 7) : "";
+    i._px = i.images.length ? i.images[0].w * i.images[0].h : 0; });
+  const dupSize = {}; items.forEach(i => { if (i.dup != null) dupSize[i.dup] = (dupSize[i.dup] || 0) + 1; });
+
+  // Header, theme
+  $("meta").textContent = `${data.meta.computer} - generated ${fmt(data.meta.generatedUtc)} - PCPorter ${data.meta.toolVersion}`;
+  $("print-head").textContent = `PCPorter - images viewed on ${data.meta.computer} - generated ${fmt(data.meta.generatedUtc)}`;
+  const applyTheme = t => { const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches); document.documentElement.dataset.theme = dark ? "dark" : "light"; };
+  const theme = store.get("pcporter-theme", "system"); $("theme").value = theme; applyTheme(theme);
+  $("theme").onchange = () => { store.set("pcporter-theme", $("theme").value); applyTheme($("theme").value); };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme($("theme").value));
+
+  // Notes (first one visible, the rest on demand) and the "how to read" box open on first visit only
+  if (data.notes && data.notes.length) {
+    $("notes").hidden = false;
+    $("notes").append(el("strong", { textContent: "Note: " }), data.notes[0]);
+    if (data.notes.length > 1) { const more = el("details", {}, [el("summary", { textContent: `${data.notes.length - 1} more note(s)` })]);
+      data.notes.slice(1).forEach(n => more.append(el("p", { textContent: n }))); $("notes").append(more); }
+  }
+  if (!store.get("pcporter-seen-howto", false)) { $("howto").open = true; store.set("pcporter-seen-howto", true); }
+
+  // Filter options
+  const kinds = [...new Set(items.map(i => i.kind))];
+  $("kind").append(el("option", { value: "", textContent: "All sources" }));
+  kinds.forEach(k => $("kind").append(el("option", { value: k, textContent: kindText[k] || k })));
+  [...new Set(items.flatMap(i => i.images.map(x => x.s)))].sort(coll.compare).forEach(s => $("size").append(el("option", { value: s, textContent: `Has size ${s}` })));
+  [...new Set(items.map(i => i.user))].sort(coll.compare).forEach(u => $("user").append(el("option", { value: u, textContent: u })));
+
+  // Tiles
+  const thumbs = items.filter(i => i.kind === "thumbnail");
+  const tileDefs = [
+    ["Thumbnails", thumbs.length, { kind: "thumbnail" }],
+    ["Original deleted", thumbs.filter(i => i.status === "Deleted").length, { kind: "thumbnail", status: "Deleted" }],
+    ["Original still exists", thumbs.filter(i => i.status === "Exists").length, { kind: "thumbnail", status: "Exists" }],
+    ["Original unreachable", thumbs.filter(i => i.status === "Unreachable").length, { kind: "thumbnail", status: "Unreachable" }],
+    ["Original unknown", thumbs.filter(i => i.status === "Unknown").length, { kind: "thumbnail", status: "Unknown" }],
+    ["Shown, no picture kept", items.filter(i => !i.images.length).length, { pic: "no" }],
+    ["Found in free space", items.filter(i => i.freeSpace).length, { extra: "free" }],
+    ["Web images", items.filter(i => i.kind === "web").length, { kind: "web" }],
+    ["Screenshots", items.filter(i => i.kind === "screenshot").length, { kind: "screenshot" }],
+    ["Opened files", items.filter(i => i.kind === "opened").length, { kind: "opened" }],
+    ["Program icons", items.filter(i => i.kind === "icon").length, { kind: "icon" }],
+  ].filter(t => t[1] > 0 || t[0] === "Thumbnails");
+  const FILTERS = ["q", "kind", "status", "pic", "size", "user", "extra", "group", "sort"];
+  const tileButtons = tileDefs.map(([label, n, f]) => {
+    const b = el("button", { className: "tile", onclick: () => setFilters(f, b) }, [el("div", { className: "n", textContent: n.toLocaleString() }), el("div", { className: "l", textContent: label })]);
+    b.setAttribute("aria-pressed", "false"); $("tiles").append(b); return b; });
+  let month = "";
+  function setFilters(f, tile) {
+    for (const k of FILTERS) if (k !== "group" && k !== "sort") $(k).value = f[k] ?? "";
+    month = ""; tileButtons.forEach(b => b.setAttribute("aria-pressed", String(b === tile))); apply();
+  }
+
+  // Month histogram
+  const months = [...new Set(items.filter(i => i._m).map(i => i._m))].sort();
+  const perMonth = Object.fromEntries(months.map(m => [m, 0])); items.forEach(i => { if (i._m) perMonth[i._m]++; });
+  const maxM = Math.max(1, ...Object.values(perMonth));
+  months.forEach(m => { const b = el("button", { title: `${m}: ${perMonth[m]} pictures`, onclick: () => { month = month === m ? "" : m; apply(); } });
+    b.style.height = Math.max(3, 46 * perMonth[m] / maxM) + "px"; b.dataset.m = m; b.setAttribute("aria-label", `${m}: ${perMonth[m]} pictures`); $("hist").append(b); });
+  if (months.length) $("hist-label").append(el("span", { textContent: months[0] }), el("span", { textContent: "time = latest date each picture could have been stored or loaded" }), el("span", { textContent: months.at(-1) }));
+  else { $("hist").hidden = true; $("hist-label").hidden = true; }
+
+  // URL hash state
+  function readHash() {
+    const p = new URLSearchParams(location.hash.slice(1));
+    for (const k of FILTERS) $(k).value = p.get(k) ?? (k === "sort" ? "path" : "");   // filters not in the address are reset
+    $("collapse").checked = p.get("collapse") === "1"; month = p.get("month") || "";
+    return p.get("item");
+  }
+  function writeHash(item) {
+    const p = new URLSearchParams();
+    for (const k of FILTERS) if ($(k).value && !(k === "sort" && $(k).value === "path")) p.set(k, $(k).value);
+    if ($("collapse").checked) p.set("collapse", "1"); if (month) p.set("month", month); if (item) p.set("item", item);
+    const h = p.toString(); if (("#" + h) !== location.hash && !(h === "" && location.hash === "")) history.replaceState(null, "", h ? "#" + h : location.pathname);
+  }
+
+  // Filtering + grouping + windowed rendering
+  let view = [], rows = [];
+  const CARD_H = 206, GAP = 12, HEAD_H = 44, MINW = 160;
+  let cols = 1;
+  function apply() {
+    const q = $("q").value.trim().toLowerCase();
+    const f = Object.fromEntries(FILTERS.map(k => [k, $(k).value]));
+    const seenDup = new Set();
+    view = items.filter(i =>
+      (!f.kind || i.kind === f.kind) && (!f.status || i.status === f.status) && (!f.user || i.user === f.user) &&
+      (!f.pic || (f.pic === "yes") === (i.images.length > 0)) && (!f.size || i.images.some(x => x.s === f.size)) &&
+      (!f.extra || (f.extra === "free" ? i.freeSpace : f.extra === "tagged" ? !!tags[i.id] : f.extra === "dups" ? (i.dup != null && dupSize[i.dup] > 1) : tags[i.id] === f.extra)) &&
+      (!month || i._m === month) && (!q || i._lc.includes(q)));
+    if ($("collapse").checked) view = view.filter(i => i.dup == null || (!seenDup.has(i.dup) && seenDup.add(i.dup)));
+    const s = f.sort;
+    const byPath = (a, b) => (a.originalPath == null) - (b.originalPath == null) || coll.compare(a.originalPath || a.url || "", b.originalPath || b.url || "") || a._n - b._n;
+    view.sort(s === "size" ? (a, b) => b._px - a._px || byPath(a, b)
+      : s === "status" ? (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || byPath(a, b)
+      : s === "date" ? (a, b) => b._t - a._t || byPath(a, b) : byPath);
+    [...$("hist").children].forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === month)));
+    $("count").textContent = `${view.length.toLocaleString()} of ${items.length.toLocaleString()} shown`;
+    $("empty").hidden = view.length > 0;
+    if (!view.length) { const active = FILTERS.filter(k => $(k).value && k !== "sort" && k !== "group").length + (month ? 1 : 0);
+      $("empty").replaceChildren(`No pictures match ${active ? "these " + active + " filter(s)" : "this view"}. `, el("button", { textContent: "Clear filters", onclick: clearFilters })); }
+    layout(); writeHash();
+  }
+  function groupKey(i) {
+    const g = $("group").value;
+    return g === "folder" ? (folderOf(i.originalPath) || (i.url ? "Website: " + hostOf(i.url) : "No path recorded"))
+      : g === "status" ? statusText[i.status] : g === "month" ? (i._m || "No date") : g === "kind" ? (kindText[i.kind] || i.kind) : null;
+  }
+  function layout() {
+    const w = $("scroller").clientWidth || 1000;
+    cols = Math.max(1, Math.floor((w + GAP) / (MINW + GAP)));
+    rows = []; let y = 0;
+    const grouping = !!$("group").value;
+    let groups = [[null, view]];
+    if (grouping) { const m = new Map(); view.forEach(i => { const k = groupKey(i); if (!m.has(k)) m.set(k, []); m.get(k).push(i); }); groups = [...m.entries()].sort((a, b) => coll.compare(a[0], b[0])); }
+    for (const [name, list] of groups) {
+      if (name !== null) { rows.push({ y, h: HEAD_H, head: name, n: list.length }); y += HEAD_H; }
+      for (let k = 0; k < list.length; k += cols) { rows.push({ y, h: CARD_H + GAP, items: list.slice(k, k + cols) }); y += CARD_H + GAP; }
+    }
+    $("scroller").style.height = y + "px";
+    $("scroller").setAttribute("aria-rowcount", String(rows.length));
+    rendered.clear(); $("scroller").replaceChildren(); draw();
+  }
+  const rendered = new Map();
+  function draw() {
+    const top = $("scroller").getBoundingClientRect().top + scrollY;
+    const from = scrollY - top - innerHeight, to = scrollY - top + 2 * innerHeight;
+    const keep = new Set();
+    rows.forEach((r, idx) => {
+      if (r.y + r.h < from || r.y > to) return;
+      keep.add(idx);
+      if (rendered.has(idx)) return;
+      let node;
+      if (r.head) node = el("div", { className: "ghead" }, [el("span", { textContent: r.head }), el("span", { className: "gc", textContent: `${r.n.toLocaleString()} pictures` })]);
+      else { node = el("div", { className: "row", role: "row" }); node.style.gridTemplateColumns = `repeat(${cols}, minmax(0,1fr))`; r.items.forEach(i => node.append(card(i))); }
+      node.style.top = r.y + "px"; $("scroller").append(node); rendered.set(idx, node);
+    });
+    for (const [idx, node] of rendered) if (!keep.has(idx)) { node.remove(); rendered.delete(idx); }
+  }
+  let raf = 0; const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
+  addEventListener("scroll", schedule, { passive: true });
+  addEventListener("resize", () => { const w = $("scroller").clientWidth; if (Math.max(1, Math.floor((w + GAP) / (MINW + GAP))) !== cols) layout(); else schedule(); });
+
+  function card(i) {
+    const name = baseName(i.originalPath) || (i.url ? i.url.replace(/^https?:\/\//, "").slice(0, 80) : (i.cacheId || i.id));
+    const pic = i.images.length
+      ? el("img", { loading: "lazy", decoding: "async", src: fileUrl(i.images[0].f), alt: name })
+      : el("div", { className: "noimg", textContent: "No picture kept - Windows only recorded that it showed this item" });
+    const badges = el("div", {}, [el("span", { className: "badge s-" + i.status, textContent: statusText[i.status] ? statusText[i.status].replace("Original ", "") : i.status })]);
+    badges.firstChild.setAttribute("aria-label", statusText[i.status] || i.status);
+    if (i.freeSpace) badges.append(el("span", { className: "badge s-rec", textContent: "Free space" }));
+    if (tags[i.id]) badges.append(el("span", { className: "badge tag", textContent: tags[i.id] }));
+    const pick = el("input", { type: "checkbox", className: "pick", checked: selected.has(i.id), ariaLabel: "Select " + name });
+    pick.onclick = e => { e.stopPropagation(); toggleSelect(i, e.shiftKey, pick.checked); };
+    const c = el("div", { className: "card" + (selected.has(i.id) ? " sel" : ""), tabIndex: 0, role: "gridcell" },
+      [el("div", { className: "img" }, [pic]), el("div", { className: "cap" }, [el("div", { className: "name", textContent: name, title: i.originalPath || i.url || "" }), badges]), pick]);
+    if (i.dup != null && dupSize[i.dup] > 1) c.append(el("span", { className: "dup", textContent: `+${dupSize[i.dup] - 1} similar` }));
+    c.dataset.n = String(view.indexOf(i));
+    c.onclick = () => open(view.indexOf(i), c);
+    c.onkeydown = e => keyNav(e, i, c);
+    return c;
+  }
+  // Grid keyboard navigation
+  function keyNav(e, i, c) {
+    const n = view.indexOf(i); let t = null;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(n, c); return; }
+    if (e.key === "ArrowRight") t = n + 1; else if (e.key === "ArrowLeft") t = n - 1;
+    else if (e.key === "ArrowDown") t = n + cols; else if (e.key === "ArrowUp") t = n - cols;
+    else if (e.key === "Home") t = 0; else if (e.key === "End") t = view.length - 1;
+    if (t === null) return;
+    e.preventDefault(); focusIndex(Math.max(0, Math.min(view.length - 1, t)));
+  }
+  function focusIndex(n) {
+    const rowIdx = rows.findIndex(r => r.items && r.items.includes(view[n]));
+    if (rowIdx < 0) return;
+    const top = $("scroller").getBoundingClientRect().top + scrollY + rows[rowIdx].y;
+    if (top < scrollY + 80 || top + CARD_H > scrollY + innerHeight) scrollTo({ top: top - innerHeight / 3 });
+    draw();
+    const node = $("scroller").querySelector(`.card[data-n="${n}"]`); if (node) node.focus();
+  }
+
+  // Selection + tags + export
+  let lastPick = -1;
+  function toggleSelect(i, range, on) {
+    const n = view.indexOf(i);
+    const ids = range && lastPick >= 0 ? view.slice(Math.min(n, lastPick), Math.max(n, lastPick) + 1).map(x => x.id) : [i.id];
+    ids.forEach(id => on ? selected.add(id) : selected.delete(id)); lastPick = n; selChanged();
+  }
+  function selChanged() { $("sel-count").textContent = `${selected.size.toLocaleString()} selected`; rendered.clear(); $("scroller").replaceChildren(); draw(); }
+  $("sel-all").onclick = () => { view.forEach(i => selected.add(i.id)); selChanged(); };
+  $("sel-none").onclick = () => { selected.clear(); selChanged(); };
+  const tagSel = t => { (selected.size ? [...selected] : []).forEach(id => { if (t) tags[id] = t; else delete tags[id]; });
+    store.set("pcporter-tags:" + data.meta.generatedUtc, tags); $("live").textContent = selected.size ? `${t ? "Tagged" : "Untagged"} ${selected.size} pictures` : "Select pictures first"; apply(); };
+  $("tag-imp").onclick = () => tagSel("Important"); $("tag-rev").onclick = () => tagSel("Review"); $("tag-clear").onclick = () => tagSel(null);
+  $("csv").onclick = () => {
+    const list = selected.size ? items.filter(i => selected.has(i.id)) : view;
+    const cols = ["source", "evidence", "user", "originalPath", "url", "status", "cacheId", "freeSpace", "displayedAfterUtc", "displayedBeforeUtc", "confidence", "tag", "picture"];
+    const esc = v => { const s = v == null ? "" : String(v); return /[",\n\r]/.test(s) || /^[=+\-@\t]/.test(s) ? `"${(/^[=+\-@\t]/.test(s) ? "'" : "") + s.replace(/"/g, '""')}"` : s; };
+    const lines = [cols.join(",")].concat(list.map(i => [i.source, evidenceText[i.evidence] || i.evidence, i.user, i.originalPath, i.url, i.status, i.cacheId, i.freeSpace ? "yes" : "",
+      i.dates && i.dates.after, i.dates && i.dates.before, i.dates && i.dates.confidence, tags[i.id], i.images.length ? IMG + i.images[0].f : ""].map(esc).join(",")));
+    const a = el("a", { href: URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" })), download: "pcporter-images.csv" });
+    document.body.append(a); a.click(); a.remove();
+    $("live").textContent = `Exported ${list.length} rows`;
+  };
+  function clearFilters() { setFilters({}, null); $("collapse").checked = false; $("group").value = ""; $("sort").value = "path"; apply(); }
+  $("clear").onclick = clearFilters;
+
+  // Print contact sheet (selected, else everything shown)
+  function buildPrint() {
+    const list = (selected.size ? view.filter(i => selected.has(i.id)) : view).filter(i => i.images.length);
+    $("print").replaceChildren(...list.map(i => el("figure", {}, [el("img", { src: fileUrl(i.images[0].f), alt: "" }),
+      el("figcaption", { textContent: `${i.originalPath || i.url || i.cacheId} - ${statusText[i.status] || i.status}${i.cacheId ? " - " + i.cacheId : ""}` })])));
+  }
+  addEventListener("beforeprint", buildPrint);
+  $("printbtn").onclick = () => { buildPrint(); print(); };
+
+  // Detail dialog
+  let cur = -1, opener = null, zoom = 1, panX = 0, panY = 0;
+  function open(n, from) { if (n < 0) return; opener = from || opener; cur = n; show(); if (!$("dlg").open) $("dlg").showModal(); writeHash(view[n].id); }
+  function show() {
+    const i = view[cur];
+    $("dlg-pos").textContent = `${cur + 1} of ${view.length.toLocaleString()}`;
+    $("dlg-title").textContent = i.originalPath || i.url || "Original file unknown";
+    const pick = img => { setZoom(1); $("dlg-img").src = fileUrl(img.f); $("dlg-img").alt = $("dlg-title").textContent;
+      [...$("dlg-sizes").children].forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === img.f))); };
+    $("big").hidden = !i.images.length;
+    const rows = [
+      ["Record", `${i.source} - ${evidenceText[i.evidence] || i.evidence}`],
+      ["Original", i.originalPath || (i.url ? "Web address below" : "Not recorded")],
+      ["Status", `${statusText[i.status] || i.status}: ${statusHelp[i.status] || ""}`],
+      ["Web address", i.url], ["User", i.user], ["Cache ID", i.cacheId],
+      ["Found in free space", i.freeSpace ? "Yes - outside the cache's active part; it may be an older copy. This alone does not prove deletion." : null],
+      ["Displayed between", i.dates ? `${fmt(i.dates.after)}  and  ${fmt(i.dates.before)}  (confidence: ${i.dates.confidence})` : null],
+      ["Largest copy", i.images.length ? `${i.images[0].w || "?"} x ${i.images[0].h || "?"} (${i.images[0].s})` : "No picture kept"],
+      ["Tag", tags[i.id]], ["Note", i.note],
+    ].filter(r => r[1]);
+    $("dlg-dl").replaceChildren(...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]));
+    $("dlg-src").replaceChildren(...((i.dates && i.dates.sources) || ["No time information for this record."]).map(s => el("li", { textContent: s })));
+    $("dlg-sizes").replaceChildren(...i.images.map(img => { const b = el("button", {}, [el("img", { src: fileUrl(img.f), alt: "" }), el("span", { textContent: `${img.s}${img.w ? ` ${img.w}x${img.h}` : ""}${img.r ? " (free space)" : ""}` })]);
+      b.dataset.f = img.f; b.onclick = () => pick(img); return b; }));
+    const dups = i.dup != null && dupSize[i.dup] > 1 ? items.filter(x => x.dup === i.dup && x !== i) : [];
+    $("dlg-dups").replaceChildren(...(dups.length ? [el("h3", { style: "font-size:13px;margin:12px 0 4px", textContent: `${dups.length} similar picture(s)` }),
+      el("div", { className: "sizes" }, dups.slice(0, 24).map(d => { const b = el("button", { title: d.originalPath || d.url || d.cacheId }, d.images.length ? [el("img", { src: fileUrl(d.images[0].f), alt: "" })] : []);
+        b.onclick = () => { const k = view.indexOf(d); if (k >= 0) { cur = k; show(); } }; return b; }))] : []));
+    if (i.images.length) pick(i.images[0]);
+    $("dlg-prev").disabled = cur <= 0; $("dlg-next").disabled = cur >= view.length - 1;
+  }
+  function closeDlg() { $("dlg").close(); }
+  $("dlg").addEventListener("close", () => { writeHash(); if (opener && document.contains(opener)) opener.focus(); else focusIndex(cur); });
+  $("dlg-close").onclick = closeDlg;
+  $("dlg").addEventListener("click", e => { if (e.target === $("dlg")) closeDlg(); });
+  $("dlg-prev").onclick = () => { if (cur > 0) { cur--; show(); writeHash(view[cur].id); } };
+  $("dlg-next").onclick = () => { if (cur < view.length - 1) { cur++; show(); writeHash(view[cur].id); } };
+  $("dlg").addEventListener("keydown", e => {
+    if (e.target.tagName === "INPUT") return;
+    const k = { ArrowLeft: cur - 1, ArrowRight: cur + 1, Home: 0, End: view.length - 1 }[e.key];
+    if (k !== undefined) { e.preventDefault(); cur = Math.max(0, Math.min(view.length - 1, k)); show(); writeHash(view[cur].id); }
+  });
+  $("dlg-copy").onclick = async () => {
+    const t = $("dlg-title").textContent;
+    try { await navigator.clipboard.writeText(t); }
+    catch { const ta = el("textarea", { value: t }); document.body.append(ta); ta.select(); try { document.execCommand("copy"); } catch { } ta.remove(); }
+    $("live").textContent = "Copied";
+  };
+  // Zoom / pan
+  function setZoom(z, cx, cy) {
+    const big = $("big"), img = $("dlg-img");
+    if (z <= 1) { zoom = 1; panX = panY = 0; big.classList.remove("zoomed"); img.style.transform = ""; return; }
+    if (zoom === 1) { panX = 0; panY = 0; }
+    const ox = cx ?? big.clientWidth / 2, oy = cy ?? big.clientHeight / 2;
+    panX = ox - (ox - panX) * (z / zoom); panY = oy - (oy - panY) * (z / zoom); zoom = Math.min(32, z);
+    big.classList.add("zoomed"); img.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`;
+  }
+  $("big").addEventListener("click", e => { if (drag.moved) return; const r = $("big").getBoundingClientRect(); setZoom(zoom === 1 ? 2 : 1, e.clientX - r.left, e.clientY - r.top); });
+  $("big").addEventListener("wheel", e => { e.preventDefault(); const r = $("big").getBoundingClientRect(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  const drag = { on: false, moved: false, x: 0, y: 0 };
+  $("big").addEventListener("pointerdown", e => { if (zoom === 1) return; drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; $("big").setPointerCapture(e.pointerId); });
+  $("big").addEventListener("pointermove", e => { if (!drag.on) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    panX += dx; panY += dy; drag.x = e.clientX; drag.y = e.clientY; $("dlg-img").style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; });
+  $("big").addEventListener("pointerup", () => { drag.on = false; setTimeout(() => { drag.moved = false; }, 0); });
+
+  // Processing notes
+  const tb = $("files").tBodies[0];
+  (data.cacheFiles || []).forEach(f => tb.append(el("tr", {}, [f.user, f.file, f.version == null ? "?" : "0x" + Number(f.version).toString(16), f.images, f.empty, f.warnings].map(v => el("td", { textContent: v ?? "" })))));
+  (data.warnings && data.warnings.length ? data.warnings : ["No warnings."]).forEach(w => $("warnings").append(el("li", { textContent: w })));
+
+  // Wire up
+  let deb = 0;
+  $("q").addEventListener("input", () => { clearTimeout(deb); deb = setTimeout(apply, 150); });
+  FILTERS.filter(k => k !== "q").forEach(k => $(k).addEventListener("change", () => { if (k !== "group" && k !== "sort") tileButtons.forEach(b => b.setAttribute("aria-pressed", "false")); apply(); }));
+  $("collapse").addEventListener("change", apply);
+  const startItem = readHash();
+  if (!location.hash) $("kind").value = kinds.includes("thumbnail") ? "thumbnail" : "";
+  apply();
+  if (startItem) { const n = view.findIndex(i => i.id === startItem); if (n >= 0) open(n); }
+  addEventListener("hashchange", () => { const it = readHash(); apply(); if (it) { const n = view.findIndex(i => i.id === it); if (n >= 0) open(n); } });
+})();
+</script>
+</body>
+</html>

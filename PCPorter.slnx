@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PCPorter.App/PCPorter.App.csproj" />
+    <Project Path="src/PCPorter.Collectors/PCPorter.Collectors.csproj" />
+    <Project Path="src/PCPorter.Core/PCPorter.Core.csproj" />
+    <Project Path="src/PCPorter.Forensics/PCPorter.Forensics.csproj" />
+    <Project Path="src/PCPorter.Reports/PCPorter.Reports.csproj" />
+    <Project Path="src/PCPorter.Security/PCPorter.Security.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PCPorter.Collectors.Tests/PCPorter.Collectors.Tests.csproj" />
+    <Project Path="tests/PCPorter.Core.Tests/PCPorter.Core.Tests.csproj" />
+    <Project Path="tests/PCPorter.Forensics.Tests/PCPorter.Forensics.Tests.csproj" />
+    <Project Path="tests/PCPorter.Reports.Tests/PCPorter.Reports.Tests.csproj" />
+    <Project Path="tests/PCPorter.Security.Tests/PCPorter.Security.Tests.csproj" />
+    <Project Path="tests/PCPorter.TestKit/PCPorter.TestKit.csproj" />
+  </Folder>
+</Solution>

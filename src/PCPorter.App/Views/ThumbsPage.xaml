@@ -1,0 +1,37 @@
+<Page x:Class="PCPorter.App.Views.ThumbsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Images viewed">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32" MaxWidth="880" HorizontalAlignment="Left">
+      <TextBlock Text="Images viewed on this PC" FontSize="28" FontWeight="SemiBold" />
+      <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,20"
+                 Text="Builds a private gallery of pictures this PC recorded: File Explorer thumbnails (including ones whose original was deleted), web browser caches, screenshots and recently opened image files. Nothing on this PC is changed." />
+
+      <TextBlock Text="Save the report to" FontWeight="SemiBold" />
+      <Grid Margin="0,6,0,4">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <ui:TextBox x:Name="OutFolder" AutomationProperties.Name="Folder to save the report in" />
+        <ui:Button Grid.Column="1" Margin="8,0,0,0" Content="Browse..." Click="Browse_Click" />
+      </Grid>
+      <TextBlock x:Name="FolderHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,16"
+                 Text="Use the backup drive or a local folder. Cloud-synced folders (OneDrive, Dropbox, Google Drive) are refused because the report contains private pictures." />
+
+      <CheckBox x:Name="WebCaches" IsChecked="True" Content="Include web browser caches (Edge, Chrome, Teams, Firefox)" />
+      <CheckBox x:Name="FullIndex" Margin="0,6,0,0" Content="Include the newest search-index changes (copies the index first; slower)" />
+      <CheckBox x:Name="AllUsers" Margin="0,6,0,0" Content="Also include the other accounts on this PC (only with their permission)" />
+
+      <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+        <ui:Button x:Name="StartButton" Appearance="Primary" Content="Build the gallery" Icon="{ui:SymbolIcon Image24}" Click="Start_Click" />
+        <ui:Button x:Name="CancelButton" Margin="8,0,0,0" Content="Cancel" IsEnabled="False" Click="Cancel_Click" />
+      </StackPanel>
+
+      <ProgressBar x:Name="Busy" IsIndeterminate="True" Margin="0,16,0,0" Visibility="Collapsed" />
+      <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+
+      <ui:InfoBar x:Name="Result" Margin="0,16,0,0" IsOpen="False" IsClosable="False" />
+      <ui:Button x:Name="OpenReport" Margin="0,8,0,0" Content="Open the report" Icon="{ui:SymbolIcon Open24}" Visibility="Collapsed" Click="OpenReport_Click" />
+    </StackPanel>
+  </ScrollViewer>
+</Page>

@@ -1,0 +1,46 @@
+✓
+PC health and security · OLD-PC
+Looks good
+Nothing stood out on this drive. Some checks (antivirus state, hardware health) only work on a running PC.
+0 worth a look
+0 unusual
+2 apps to reinstall
+Scanned <time>
+Worth checking when you have time
+Nothing here is urgent.
+Nothing to do. Keep Windows updated and your backups running.
+Security
+Antivirus
+[Note] Avast: Avast is installed on this drive. On your new PC, install it again from the maker's website.
+Windows protections
+[OK] Firewall: The firewall was on for every type of network.
+Programs that start with Windows
+No startup programs were found.
+Moving to your new PC
+2 apps to install again on the new PC. 1 can be installed automatically; the rest need a download from the maker's website.
+App list
+App | Maker | Version | How to get it
+Avast Free Antivirus | Avast Software | 23.1 | Maker's website
+Google Chrome | Google LLC | 120.0 | Automatic Google.Chrome
+Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+Hardware health
+x64
+Drives
+Drive health can only be read on the running PC.
+Technical details
+Show technical details
+Checks that ran
+Check | Result | Found | Time | Note
+PC profile and health | Ok | 1 | #.# s |
+Antivirus | Ok | 1 | #.# s |
+Security settings | Ok | 1 | #.# s |
+Programs that start automatically | Ok | 0 | #.# s |
+Installed apps | Ok | 2 | #.# s |
+Settings evidence
+Firewall | firewall=ok
+PC details
+Windows | Windows 10 Pro 22H2 (build 19045.5000)
+Edition | Professional
+Architecture | x64
+Scan <id>. The full data is in the case folder (case.db and the scan folder).
+Read-only scan. Nothing was changed or sent anywhere. Made by PCPorter.

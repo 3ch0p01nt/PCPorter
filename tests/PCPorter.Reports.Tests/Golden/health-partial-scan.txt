@@ -1,0 +1,50 @@
+✓
+PC health and security · WORK-PC
+Looks good
+Nothing stood out in the parts we could check.
+0 worth a look
+0 unusual
+0 apps to reinstall
+Scanned <time>
+Some checks could not finish, so parts of this report are missing. See Technical details at the end.
+Worth checking when you have time
+Nothing here is urgent.
+Nothing to do. Keep Windows updated and your backups running.
+Security
+Antivirus
+[Note] Antivirus: We couldn't check the antivirus.
+Windows protections
+[OK] Firewall: The firewall is on for every type of network.
+[OK] User Account Control: User Account Control is on.
+[OK] Windows updates: Windows installed updates yesterday.
+Programs that start with Windows
+The startup check did not run.
+Moving to your new PC
+The installed-apps check did not run.
+Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+Hardware health
+16 GB memory · 8 processor threads · x64
+Drives
+[OK] Samsung SSD 990 (1 TB, SSD): Healthy (about 97% of rated life left).
+[OK] Drive C:: 400 GB free of 1 TB (40% free).
+[OK] Crashes: No crashes or unexpected restarts in the last 90 days.
+Technical details
+Show technical details
+Checks that ran
+Check | Result | Found | Time | Note
+PC profile and health | Ok | 1 | #.# s |
+Antivirus | Failed | 0 | #.# s | IOException: Security Center did not answer
+Security settings | Partial | 3 | #.# s | 2 checks could not be read.
+Notes
+Antivirus stopped: Security Center did not answer
+Settings evidence
+Firewall | firewall=ok
+User Account Control | uac=ok
+Windows updates | windows-update=ok
+PC details
+Windows | Windows 11 Home 25H2 (build 26200.100)
+Edition | Core
+Architecture | x64
+TPM version | 2.0
+Scan <id>. The full data is in the case folder (case.db and the scan folder).
+Read-only scan. Nothing was changed or sent anywhere. Made by PCPorter.

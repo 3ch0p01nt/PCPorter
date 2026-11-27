@@ -1,0 +1,59 @@
+computer: OLDPC; offline: True
+collector PC profile and health: Partial, 1 items
+collector Antivirus: Ok, 0 items
+collector Security settings: Ok, 23 items
+collector Programs that start automatically: Ok, 17 items
+collector Installed apps: Ok, 12 items
+startup [High] SUSPICIOUS_COMMAND: HKCU(bob)\Environment | UserInitMprLogonScript | C:\Users\bob\AppData\Roaming\logon.vbs
+startup [High] WINLOGON_CHANGED: HKCU(bob)\Software\Classes\ms-settings\shell\open\command | ms-settings open command | C:\Users\bob\AppData\Local\Temp\bypass.exe
+startup [Medium] UNSIGNED_APPDATA: HKCU(bob)\Software\Microsoft\Command Processor | AutoRun | C:\Users\bob\AppData\Local\cmdhook.exe
+startup [High] UNSIGNED_RISKY_PATH: HKCU(bob)\Software\Microsoft\Windows NT\CurrentVersion\Windows | Load | C:\Users\bob\AppData\Local\Temp\l.exe
+startup [Medium] UNSIGNED_APPDATA: HKCU(bob)\Software\Microsoft\Windows\CurrentVersion\Run | Sync | "C:\Users\bob\AppData\Local\SyncTool\sync.exe" --password=***
+startup [High] UNSIGNED_RISKY_PATH: HKCU(bob)\Software\Microsoft\Windows\CurrentVersion\Run | Updater | %APPDATA%\x7f3kq9zpw.exe
+startup [High] WINLOGON_CHANGED: HKLM\SOFTWARE\Classes\exefile\shell\open\command | exefile open command | "C:\ProgramData\Hook\hook.exe" "%1" %*
+startup [Info] NOT_VERIFIABLE: HKLM\SOFTWARE\Google\Chrome\Extensions | iiiijjjjkkkkllllmmmmnnnnoooopppp | iiiijjjjkkkkllllmmmmnnnnoooopppp;https://clients2.google.com/service/update2/crx
+startup [High] UNSIGNED_RISKY_PATH: HKLM\SOFTWARE\Microsoft\Command Processor | AutoRun | C:\Users\Public\a.bat
+startup [High] WINLOGON_CHANGED: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon | Taskman | C:\ProgramData\Svc\svc.exe
+startup [Info] NOT_VERIFIABLE: HKLM\SOFTWARE\Policies\Google\Chrome | ExtensionSettings: aaaabbbbccccddddeeeeffffgggghhhh | aaaabbbbccccddddeeeeffffgggghhhh;https://evil.example/u.xml
+startup [Info] NOT_VERIFIABLE: HKLM\SOFTWARE\Policies\Mozilla\Firefox\Extensions\Install | 1 | https://evil.example/x.xpi
+startup [Medium] UNQUOTED_SERVICE_PATH: HKLM\SYSTEM\CurrentControlSet\Services | BadVendorSvc | C:\Program Files\Bad Vendor\svc host.exe
+startup [Medium] UNSIGNED: Startup folder (bob, moved) | run.bat | C:\Users\bob\Music\Start\run.bat
+startup [Low] FILE_MISSING: Task Scheduler | Backup | "C:\Program Files\Backup\backup.exe" /quiet
+startup [Info] TASK_LEFTOVER: Task Scheduler | Leftover | 
+startup [High] TASK_HIDDEN: Task Scheduler | Updater | C:\Users\Public\up.exe
+posture auto-logon: Risk
+posture backup: Attention
+posture browser-extension:chrome:machine:aaaabbbbccccddddeeeeffffgggghhhh: Attention
+posture browser-extension:firefox:machine:https://evil.example/x.xpi: Attention
+posture browser-extensions: Attention
+posture defender: Unknown
+posture disk-space: Good
+posture dns: Good
+posture firewall: Unknown
+posture hosts-file: Unknown
+posture listening-ports: Unknown
+posture local-accounts: Unknown
+posture lsa-protection: Unknown
+posture memory-integrity: Unknown
+posture pending-reboot: Good
+posture proxy: Good
+posture remote-desktop: Unknown
+posture root-certificates: Good
+posture smart-app-control: NotApplicable
+posture smb1: Good
+posture uac: Unknown
+posture windows-support: Risk
+posture windows-update: Unknown
+app 7-Zip 26.06 (x64 edition) | 26.06 | x64 | Win32 | ProductCode 7zip.7zip
+app Contoso Compatibility Fix |  | x64 | Win32 hidden | None
+app Contoso Updater 7 | 7.0 | x64 | Win32 | ProductCode Contoso.Updater
+app Family Photos | 1.0 | x86 | Win32 | InstalledByWinget SmallShop.FamilyPhotos
+app Family Photos | 2.0 | x64 | Win32 | InstalledByWinget SmallShop.FamilyPhotos
+app Family Photos | 3.0 | x64 | Win32 | InstalledByWinget SmallShop.FamilyPhotos
+app IDA Freeware 8.4 | 8.4 | x64 | Win32 | ProductCode Hex-Rays.IDA.Free
+app jq | 1.8 | x64 | Win32 | NameMatch jqlang.jq
+app PortaTool |  | neutral | Portable | -
+app PyCharm Community Edition 2025.1 | 251.1 | x64 | Win32 | NameMatch JetBrains.PyCharm.Community
+app Python 3.12.4 (64-bit) | 3.12.4 | x64 | Win32 | NameMatch Python.Python.3.12
+app Tool | 1.0 | x64 | Win32 | None
+banner: 10 worth a look (2 fix this), 7 unusual

@@ -1,0 +1,32 @@
+<Page x:Class="PCPorter.App.Views.HomePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Home">
+  <StackPanel Margin="32">
+    <TextBlock Text="What would you like to do?" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,24" />
+    <UniformGrid Columns="3">
+      <ui:CardAction Margin="0,0,12,0" Icon="{ui:SymbolIcon ArrowSwap24}" AutomationProperties.Name="Move to my new PC" Click="Move_Click">
+        <StackPanel>
+          <TextBlock Text="Move to my new PC" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Back up this PC, or restore a backup onto a new one, without bringing viruses along."
+                     TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
+        </StackPanel>
+      </ui:CardAction>
+      <ui:CardAction Margin="6,0" Icon="{ui:SymbolIcon History24}" AutomationProperties.Name="Explore my PC's history" Click="History_Click">
+        <StackPanel>
+          <TextBlock Text="Explore my PC's history" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Web history, viewed images, and everything this PC has logged."
+                     TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
+        </StackPanel>
+      </ui:CardAction>
+      <ui:CardAction Margin="12,0,0,0" Icon="{ui:SymbolIcon ShieldCheckmark24}" AutomationProperties.Name="Check health and security" Click="Health_Click">
+        <StackPanel>
+          <TextBlock Text="Check health and security" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Antivirus, startup programs, disk and battery health, and a readiness score."
+                     TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
+        </StackPanel>
+      </ui:CardAction>
+    </UniformGrid>
+  </StackPanel>
+</Page>

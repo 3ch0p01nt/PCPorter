@@ -1,0 +1,127 @@
+using System.Reflection;
+using System.Text.Json;
+using PCPorter.Core.Case;
+using PCPorter.Forensics.Gallery;
+using PCPorter.Forensics.Images;
+using PCPorter.Forensics.Thumbcache;
+
+namespace PCPorter.Reports;
+
+public sealed record ThumbnailJobOptions(
+    bool AllUsers = false,
+    IReadOnlyList<IImageEvidenceSource>? ExtraSources = null,
+    Func<IReadOnlyList<GalleryItem>, string, IReadOnlyDictionary<string, int>>? DuplicateGrouper = null,
+    IReadOnlyList<string>? ExtraNotes = null,
+    /// <summary>Builds the path resolver given a private work folder inside the case (for index copies).</summary>
+    Func<string, IThumbnailPathResolver>? ResolverFactory = null,
+    /// <summary>More thumbnail folders derived from the live ones (e.g. inside restore points).</summary>
+    Func<IReadOnlyList<ThumbnailSource>, IReadOnlyList<ThumbnailSource>>? AdditionalSources = null);
+
+public sealed record ThumbnailJobResult(string ReportPath, string CaseFolder, GalleryScanResult Scan, IReadOnlyList<string> FolderWarnings);
+
+/// <summary>
+/// End-to-end: create a private case folder, collect thumbnails (and any extra image sources), group near-duplicates,
+/// write case.db rows and Thumbnails.html. Read-only on the scanned PC.
+/// </summary>
+public static class ThumbnailJob
+{
+    public static ThumbnailJobResult Run(
+        string outRoot, IThumbnailPathResolver? resolver = null, IReadOnlyList<ThumbnailSource>? sources = null,
+        IProgress<string>? progress = null, DateTimeOffset? now = null, ThumbnailJobOptions? options = null,
+        CancellationToken ct = default)
+    {
+        options ??= new ThumbnailJobOptions();
+        var when = now ?? DateTimeOffset.UtcNow;
+        var folder = CaseFolder.Create(outRoot, when);
+        var reportFolder = Path.Combine(folder.Path, "Thumbnails");
+        CaseFolder.CreatePrivate(reportFolder);
+        var imagesFolder = Path.Combine(reportFolder, "thumbs");
+        var work = Path.Combine(folder.Path, "work");
+        CaseFolder.CreatePrivate(work);
+
+        resolver ??= options.ResolverFactory?.Invoke(work) ?? new NoPathResolver();
+        sources ??= ThumbnailCollector.LiveSources(options.AllUsers);
+        var allSources = options.AdditionalSources is null ? sources : sources.Concat(options.AdditionalSources(sources)).ToList();
+        var scan = new ThumbnailCollector(resolver).Collect(allSources, imagesFolder, progress, ct);
+
+        // Other image sources (browser caches, screenshots, recently opened files) go into the same gallery.
+        var items = scan.Items.ToList();
+        var warnings = scan.Warnings.ToList();
+        var notes = scan.Notes.Concat(options.ExtraNotes ?? []).ToList();
+        if (options.ExtraSources is { Count: > 0 })
+        {
+            var store = new ImageStore(imagesFolder);
+            var locator = new OriginalLocator();
+            foreach (var src in sources)
+            {
+                var profile = Path.GetFullPath(Path.Combine(src.ExplorerFolder, "..", "..", "..", "..", ".."));
+                var ctx = new ImageSourceContext(src.User, profile, warnings);
+                foreach (var source in options.ExtraSources)
+                {
+                    progress?.Report($"{src.User}: {source.Name}");
+                    try
+                    {
+                        foreach (var ev in source.Collect(ctx, ct))
+                            items.Add(EvidenceMapper.ToItem(ev, store, locator));
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        warnings.Add($"{source.Name} for {src.User} stopped early: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        items = DateCorroborator.Apply(items);
+
+        if (options.DuplicateGrouper is not null)
+        {
+            progress?.Report("Finding similar pictures");
+            var groups = options.DuplicateGrouper(items, imagesFolder);
+            items = items.Select(i => groups.TryGetValue(i.Id, out var g) ? i with { DupGroup = g } : i).ToList();
+        }
+
+        scan = new GalleryScanResult(items, scan.CacheFiles, warnings, notes);
+
+        using (var db = CaseDb.Open(Path.Combine(folder.Path, "case.db")))
+            db.Insert(items.Select(i => new Artifact(
+                TsUtc: i.Dates?.Before, Category: "Image." + i.Kind, Source: i.Source, ArtifactName: i.Kind,
+                User: i.User, Action: i.Evidence.ToString(), Subject: i.OriginalPath ?? i.Url ?? i.CacheId ?? i.Id,
+                Detail: JsonSerializer.Serialize(new { i.CacheId, Status = i.Status.ToString(), i.FoundInFreeSpace, HasPicture = i.HasImage, i.Dates?.Confidence }),
+                Confidence: i.Evidence == EvidenceLevel.Opened ? Confidence.Ran : Confidence.Existed)));
+
+        try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+
+        var version = typeof(ThumbnailJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "dev";
+        var meta = new ReportMeta(Environment.MachineName, when, version, sources.Select(s => s.User).ToList(), options.AllUsers);
+        var report = GalleryReport.WriteFile(scan, meta, reportFolder);
+        return new ThumbnailJobResult(report, folder.Path, scan, folder.Warnings);
+    }
+}
+
+/// <summary>Turns evidence from any image source into a gallery item.</summary>
+public static class EvidenceMapper
+{
+    public static GalleryItem ToItem(ImageEvidence ev, ImageStore store, OriginalLocator locator)
+    {
+        GalleryImage? image = null;
+        if (ev.ImageBytes is { Length: > 0 } bytes)
+            image = new GalleryImage("original", 0, 0, store.Save(bytes, ImageStore.ExtensionFor(bytes)), ImageFormat.Unknown, false);
+        string kind = ev.Evidence switch
+        {
+            EvidenceLevel.LoadedByWebPage => "web",
+            EvidenceLevel.OnScreen => "screenshot",
+            EvidenceLevel.Opened => "opened",
+            _ => "other",
+        };
+        var sources = new List<string>();
+        if (ev.FirstSeenUtc is { } f) sources.Add($"{f:u}: {ev.TimeMeaning ?? "first seen"} (earliest)");
+        if (ev.LastSeenUtc is { } l) sources.Add($"{l:u}: {ev.TimeMeaning ?? "last seen"} (latest)");
+        var status = ev.OriginalPath is null ? OriginalStatus.Unknown : locator.Locate(ev.OriginalPath);
+        var id = $"{kind[0]}-{ev.User}-{System.IO.Hashing.XxHash64.HashToUInt64(System.Text.Encoding.UTF8.GetBytes($"{ev.Source}|{ev.OriginalPath}|{ev.Url}|{ev.FirstSeenUtc}|{ev.LastSeenUtc}")):x16}";
+        return new GalleryItem(id, kind, ev.Source, ev.Evidence, ev.User, CacheId: null, ev.OriginalPath, ev.Url, status,
+            FoundInFreeSpace: false, Best: image, Images: image is null ? [] : [image],
+            Dates: sources.Count == 0 ? null : new DateWindow(ev.FirstSeenUtc, ev.LastSeenUtc ?? ev.FirstSeenUtc, "Medium", sources),
+            Note: ev.Note);
+    }
+}
