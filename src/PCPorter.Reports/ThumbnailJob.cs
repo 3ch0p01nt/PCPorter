@@ -10,7 +10,7 @@ namespace PCPorter.Reports;
 public sealed record ThumbnailJobOptions(
     bool AllUsers = false,
     IReadOnlyList<IImageEvidenceSource>? ExtraSources = null,
-    Func<IReadOnlyList<GalleryItem>, string, IReadOnlyDictionary<string, int>>? DuplicateGrouper = null,
+    Func<IReadOnlyList<GalleryItem>, string, CancellationToken, IReadOnlyDictionary<string, int>>? DuplicateGrouper = null,
     IReadOnlyList<string>? ExtraNotes = null,
     /// <summary>Builds the path resolver given a private work folder inside the case (for index copies).</summary>
     Func<string, IThumbnailPathResolver>? ResolverFactory = null,
@@ -38,7 +38,15 @@ public static class ThumbnailJob
         var imagesFolder = Path.Combine(reportFolder, "thumbs");
         var work = Path.Combine(folder.Path, "work");
         CaseFolder.CreatePrivate(work);
+        try { return Collect(); }
+        finally
+        {
+            // Also on Cancel or a failure: the work folder can hold a copy of the search index.
+            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
 
+        ThumbnailJobResult Collect()
+        {
         resolver ??= options.ResolverFactory?.Invoke(work) ?? new NoPathResolver();
         sources ??= ThumbnailCollector.LiveSources(options.AllUsers);
         var allSources = options.AdditionalSources is null ? sources : sources.Concat(options.AdditionalSources(sources)).ToList();
@@ -58,6 +66,7 @@ public static class ThumbnailJob
                 var ctx = new ImageSourceContext(src.User, profile, warnings);
                 foreach (var source in options.ExtraSources)
                 {
+                    ct.ThrowIfCancellationRequested();
                     progress?.Report($"{src.User}: {source.Name}");
                     try
                     {
@@ -72,14 +81,16 @@ public static class ThumbnailJob
             }
         }
 
+        ct.ThrowIfCancellationRequested();
         items = DateCorroborator.Apply(items);
 
         if (options.DuplicateGrouper is not null)
         {
             progress?.Report("Finding similar pictures");
-            var groups = options.DuplicateGrouper(items, imagesFolder);
+            var groups = options.DuplicateGrouper(items, imagesFolder, ct);
             items = items.Select(i => groups.TryGetValue(i.Id, out var g) ? i with { DupGroup = g } : i).ToList();
         }
+        ct.ThrowIfCancellationRequested();
 
         scan = new GalleryScanResult(items, scan.CacheFiles, warnings, notes);
 
@@ -90,12 +101,11 @@ public static class ThumbnailJob
                 Detail: JsonSerializer.Serialize(new { i.CacheId, Status = i.Status.ToString(), i.FoundInFreeSpace, HasPicture = i.HasImage, i.Dates?.Confidence }),
                 Confidence: i.Evidence == EvidenceLevel.Opened ? Confidence.Ran : Confidence.Existed)));
 
-        try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-
         var version = typeof(ThumbnailJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "dev";
         var meta = new ReportMeta(Environment.MachineName, when, version, sources.Select(s => s.User).ToList(), options.AllUsers);
         var report = GalleryReport.WriteFile(scan, meta, reportFolder);
         return new ThumbnailJobResult(report, folder.Path, scan, folder.Warnings);
+        }
     }
 }
 

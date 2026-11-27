@@ -32,8 +32,11 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
         return new NoteResolver("No Windows Search index was found (or it is not readable without administrator rights). Original file paths are shown as unknown.");
     }
 
-    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds)
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds) => Resolve(cacheIds, default);
+
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var result = new Dictionary<ulong, string>();
         if (cacheIds.Count == 0) return result;
         var wanted = cacheIds as ISet<ulong> ?? cacheIds.ToHashSet();
@@ -49,7 +52,10 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
                 Directory.CreateDirectory(copyDir);
                 source = Path.Combine(copyDir, Path.GetFileName(databasePath));
                 foreach (var suffix in new[] { "", "-wal", "-shm" })
+                {
+                    ct.ThrowIfCancellationRequested();
                     if (File.Exists(databasePath + suffix)) CopyShared(databasePath + suffix, source + suffix);
+                }
             }
 
             using var conn = Open(source, immutable: copyDir is null);
@@ -73,8 +79,10 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
                 cmd.CommandText = "SELECT WorkId, Value FROM SystemIndex_1_PropertyStore WHERE ColumnId = $c";
                 cmd.Parameters.AddWithValue("$c", idColumn);
                 using var r = cmd.ExecuteReader();
+                long rows = 0;
                 while (r.Read())
                 {
+                    if ((++rows & 0xFFF) == 0) ct.ThrowIfCancellationRequested();
                     if (r.IsDBNull(1) || r.GetBytes(1, 0, null, 0, 0) != 8) continue;
                     r.GetBytes(1, 0, buf, 0, 8);
                     var id = BitConverter.ToUInt64(buf);
@@ -101,6 +109,7 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
             int withoutPath = 0;
             foreach (var (workId, id) in workIds)
             {
+                ct.ThrowIfCancellationRequested();
                 var path = Get(workId, pathColumn)
                     ?? (Get(workId, folderColumn) is { } folder && Get(workId, nameColumn) is { } name ? Path.Combine(folder, name) : null)
                     ?? FromUrl(Get(workId, urlColumn));

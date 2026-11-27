@@ -49,14 +49,17 @@ public static class GalleryJobFactory
     {
         readonly List<string> _notes = [];
         public IReadOnlyList<string> Notes => _notes;
-        public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> ids)
+        public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> ids) => Resolve(ids, default);
+
+        public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> ids, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
                 progress?.Report("Taking a temporary shadow copy to read the Windows 10 search index");
                 using var snap = new VssSnapshotProvider().Create(@"C:\");
                 var inner = SearchIndexResolverFactory.ForPc(snap.Map(SearchFolder), work, progress);
-                var map = inner.Resolve(ids);
+                var map = inner.Resolve(ids, ct);
                 _notes.AddRange(inner.Notes);
                 return map;
             }
@@ -89,12 +92,13 @@ public static class GalleryJobFactory
     /// Groups visually similar pictures (64-bit difference hash, distance &lt;= 10). Folder previews and program icons are
     /// left out (they all look alike), and very large groups are dropped as noise.
     /// </summary>
-    public static IReadOnlyDictionary<string, int> GroupSimilar(IReadOnlyList<GalleryItem> items, string imagesFolder)
+    public static IReadOnlyDictionary<string, int> GroupSimilar(IReadOnlyList<GalleryItem> items, string imagesFolder, CancellationToken ct = default)
     {
         var hashes = new List<(string, ulong)>();
         var byFile = new Dictionary<string, ulong?>();
         foreach (var i in items)
         {
+            ct.ThrowIfCancellationRequested();
             if (i.Best is not { } best || i.Kind == "icon" || IsFolder(i.OriginalPath)) continue;
             if (!byFile.TryGetValue(best.File, out var h))
             {

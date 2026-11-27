@@ -40,8 +40,11 @@ public sealed class EseSearchIndexPathResolver(
     readonly List<string> _notes = [];
     public IReadOnlyList<string> Notes => _notes;
 
-    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds)
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds) => Resolve(cacheIds, default);
+
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var result = new Dictionary<ulong, string>();
         if (cacheIds.Count == 0) return result;
         var wanted = cacheIds as ISet<ulong> ?? cacheIds.ToHashSet();
@@ -64,7 +67,8 @@ public sealed class EseSearchIndexPathResolver(
             if (info.dbstate == JET_dbstate.DirtyShutdown && !Recover(copy, db, skipped)) return result;
 
             progress?.Report("Reading the search index (this can take a few minutes on large indexes)");
-            Read(copy, db, wanted, result);
+            ct.ThrowIfCancellationRequested();
+            Read(copy, db, wanted, result, ct);
         }
         catch (Exception ex) when (ex is EsentException or IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {
@@ -129,7 +133,7 @@ public sealed class EseSearchIndexPathResolver(
         return false;
     }
 
-    void Read(string copy, string db, ISet<ulong> wanted, Dictionary<ulong, string> result)
+    void Read(string copy, string db, ISet<ulong> wanted, Dictionary<ulong, string> result, CancellationToken ct)
     {
         using var instance = CreateInstance(copy, recovery: false);
         instance.Init();
@@ -138,7 +142,7 @@ public sealed class EseSearchIndexPathResolver(
         try
         {
             Api.JetOpenDatabase(session, db, null, out var dbid, OpenDatabaseGrbit.ReadOnly);
-            try { ReadTable(session, dbid, wanted, result); }
+            try { ReadTable(session, dbid, wanted, result, ct); }
             finally { Api.JetCloseDatabase(session, dbid, CloseDatabaseGrbit.None); }
         }
         finally
@@ -147,7 +151,7 @@ public sealed class EseSearchIndexPathResolver(
         }
     }
 
-    void ReadTable(Session session, JET_DBID dbid, ISet<ulong> wanted, Dictionary<ulong, string> result)
+    void ReadTable(Session session, JET_DBID dbid, ISet<ulong> wanted, Dictionary<ulong, string> result, CancellationToken ct)
     {
         var tables = Api.GetTableNames(session, dbid).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var table = TableNames.FirstOrDefault(tables.Contains);
@@ -179,8 +183,10 @@ public sealed class EseSearchIndexPathResolver(
         try
         {
             if (!Api.TryMoveFirst(session, tableid)) return;
+            long rows = 0;
             do
             {
+                if ((++rows & 0xFFF) == 0) ct.ThrowIfCancellationRequested();
                 if (Api.RetrieveColumn(session, tableid, idColumn.Columnid) is not { Length: 8 } raw) continue;
                 var le = BinaryPrimitives.ReadUInt64LittleEndian(raw);
                 var be = BinaryPrimitives.ReadUInt64BigEndian(raw);

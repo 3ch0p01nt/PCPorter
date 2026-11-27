@@ -12,6 +12,12 @@ public interface IThumbnailPathResolver
 {
     IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds);
 
+    /// <summary>
+    /// Same, stopping with <see cref="OperationCanceledException"/> soon after <paramref name="ct"/> is cancelled.
+    /// Resolvers that can run long (file walks, index reads) override this; the default ignores the token.
+    /// </summary>
+    IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds, CancellationToken ct) => Resolve(cacheIds);
+
     /// <summary>Notes for the report (e.g. "search index not readable without admin").</summary>
     IReadOnlyList<string> Notes => [];
 }
@@ -26,14 +32,17 @@ public sealed class ChainedPathResolver(params IThumbnailPathResolver[] resolver
 {
     public IReadOnlyList<string> Notes => resolvers.SelectMany(r => r.Notes).ToList();
 
-    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds)
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds) => Resolve(cacheIds, default);
+
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds, CancellationToken ct)
     {
         var result = new Dictionary<ulong, string>();
         IReadOnlyCollection<ulong> remaining = cacheIds;
         foreach (var r in resolvers)
         {
+            ct.ThrowIfCancellationRequested();
             if (remaining.Count == 0) break;
-            foreach (var (id, path) in r.Resolve(remaining)) result.TryAdd(id, path);
+            foreach (var (id, path) in r.Resolve(remaining, ct)) result.TryAdd(id, path);
             remaining = remaining.Where(id => !result.ContainsKey(id)).ToHashSet();
         }
         return result;
@@ -126,7 +135,8 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
         }
 
         progress?.Report("Looking up original file paths");
-        var paths = resolver.Resolve(byKey.Keys.Where(k => k.Kind == "thumbnail").Select(k => k.Id).ToHashSet());
+        ct.ThrowIfCancellationRequested();
+        var paths = resolver.Resolve(byKey.Keys.Where(k => k.Kind == "thumbnail").Select(k => k.Id).ToHashSet(), ct);
 
         progress?.Report("Checking which originals still exist");
         var items = new List<GalleryItem>(byKey.Count);

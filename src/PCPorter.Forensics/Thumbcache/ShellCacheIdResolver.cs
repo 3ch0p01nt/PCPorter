@@ -35,7 +35,11 @@ public sealed class ShellCacheIdResolver(IEnumerable<string> roots, int maxItems
     }
 
     public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds)
+        => Resolve(cacheIds, default);
+
+    public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> cacheIds, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var result = new Dictionary<ulong, string>();
         if (cacheIds.Count == 0) return result;
         var wanted = cacheIds as ISet<ulong> ?? cacheIds.ToHashSet();
@@ -43,13 +47,15 @@ public sealed class ShellCacheIdResolver(IEnumerable<string> roots, int maxItems
         int visited = 0;
         bool stopped = false;
 
-        // Shell objects are apartment-bound; use one STA thread for the whole walk.
+        // Shell objects are apartment-bound; use one STA thread for the whole walk. The thread only notes a cancel
+        // (an exception on it would end the process); the caller's thread throws after Join.
         var thread = new Thread(() =>
         {
             var key = PKEY_ThumbnailCacheId;
             var iid = typeof(IShellItem2).GUID;
             foreach (var path in Walk(roots))
             {
+                if (ct.IsCancellationRequested) break;
                 if (++visited > maxItems || DateTime.UtcNow > deadline) { stopped = true; break; }
                 if (SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var item) != 0 || item is null) continue;
                 try
@@ -64,6 +70,7 @@ public sealed class ShellCacheIdResolver(IEnumerable<string> roots, int maxItems
         thread.IsBackground = true;
         thread.Start();
         thread.Join();
+        ct.ThrowIfCancellationRequested();
 
         if (stopped) _notes.Add($"Stopped matching files to thumbnails after checking {visited:N0} items; some thumbnails may still show as unknown.");
         return result;
