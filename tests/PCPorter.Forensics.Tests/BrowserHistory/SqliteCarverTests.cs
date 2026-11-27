@@ -347,6 +347,58 @@ public class SqliteCarverTests
         finally { BrowserFixtures.Delete(dir); }
     }
 
+    /// <summary>Wipes the 100-byte database header (magic, page size, everything) after the rows were written.</summary>
+    static void BreakHeader(string file)
+    {
+        using var fs = new FileStream(file, FileMode.Open, FileAccess.Write);
+        fs.Write(new byte[100]);
+    }
+
+    [Fact]
+    public void Chrome_history_with_a_damaged_header_is_carved_with_a_warning()
+    {
+        var dir = BrowserFixtures.TempDir();
+        try
+        {
+            var folder = Path.Combine(dir, "Default");
+            using (var f = new ChromiumFixture(folder)) FillChrome(f, 30, _ => false);
+            BreakHeader(Path.Combine(folder, "History"));
+
+            var h = ChromiumHistoryReader.Read(Chrome(folder), Path.Combine(dir, "work"));
+
+            Assert.Contains(h.Warnings, w => w.Contains("damaged") && w.Contains("carved", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(h.Visits, v => v.Origin != Origin.Carved);
+            Assert.Equal(Text(Expected(30, _ => true)), Text(Carved(h.Visits)));
+            Assert.All(h.Visits, v => Assert.Equal(VisitHow.Typed, v.How));
+        }
+        finally { BrowserFixtures.Delete(dir); }
+    }
+
+    [Fact]
+    public void Firefox_history_with_a_damaged_header_is_carved_with_a_warning()
+    {
+        var dir = BrowserFixtures.TempDir();
+        try
+        {
+            var folder = Path.Combine(dir, "abcd.default-release");
+            using (var f = new FirefoxFixture(folder, "PRAGMA secure_delete=OFF; PRAGMA page_size=32768;"))
+                for (int i = 0; i < 30; i++)
+                {
+                    var place = f.Place(Address(i), Title(i));
+                    f.Sql($"UPDATE moz_places SET last_visit_date = {FirefoxFixture.PrTime(T0.AddMinutes(i))} WHERE id = {place}");
+                    f.Visit(place, T0.AddMinutes(i), 2);
+                }
+            BreakHeader(Path.Combine(folder, "places.sqlite"));
+
+            var h = FirefoxHistoryReader.Read(Fox(folder), Path.Combine(dir, "work"));
+
+            Assert.Contains(h.Warnings, w => w.Contains("damaged") && w.Contains("carved", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(h.Visits, v => v.Origin != Origin.Carved);
+            Assert.Equal(Text(Expected(30, _ => true)), Text(Carved(h.Visits)));
+        }
+        finally { BrowserFixtures.Delete(dir); }
+    }
+
     [Fact]
     public void Cancellation_is_honoured()
     {

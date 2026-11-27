@@ -32,14 +32,29 @@ public static class ChromiumHistoryReader
     public static ProfileHistory Read(BrowserProfile profile, string workFolder, Func<string, bool?>? stillOnDisk = null, CancellationToken ct = default)
     {
         using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder);
-        using var conn = snap.Open();
-        var urlSearches = new List<Search>();
-        var visits = ReadVisits(conn, profile, urlSearches, ct);
         var notes = new List<string>();
-        var searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
-        var downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
         var warnings = new List<string>();
-        visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, conn, DateTimeOffset.UtcNow, ct)));
+        List<Visit> visits;
+        List<Search> searches;
+        List<Download> downloads;
+        SqliteConnection? conn = null;
+        try
+        {
+            conn = snap.Open();
+            var urlSearches = new List<Search>();
+            visits = ReadVisits(conn, profile, urlSearches, ct);
+            searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
+            downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
+            var live = conn;
+            visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
+        }
+        catch (SqliteException e) when (IsDamaged(e))
+        {
+            visits = CarveDamaged(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, null, DateTimeOffset.UtcNow, ct));
+            searches = [];
+            downloads = [];
+        }
+        finally { conn?.Dispose(); }
         var bookmarks = Part(profile, "bookmarks", warnings, () => ChromiumBookmarks.Read(profile));
         var tabs = Part(profile, "open and recently closed tabs", warnings, () => ChromiumSessions.Read(profile, notes));
         var forms = Part(profile, "saved form entries", warnings, () => ChromiumWebData.Read(profile, workFolder, notes, ct));
@@ -78,6 +93,34 @@ public static class ChromiumHistoryReader
         catch (Exception e) when (e is not OperationCanceledException)
         {
             warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: deleted history could not be searched: {e.Message.Split('\n')[0].Trim()}");
+            return [];
+        }
+    }
+
+    /// <summary>SQLITE_CORRUPT (11) or SQLITE_NOTADB (26), including their extended codes.</summary>
+    internal static bool IsDamaged(SqliteException e) => (e.SqliteErrorCode & 0xFF) is 11 or 26;
+
+    internal const string DamagedNote = "damaged history file";
+
+    /// <summary>
+    /// A history file SQLite cannot open: every row still in its raw bytes is recovered by the carver (live rows too, since
+    /// nothing can be compared with), labelled as recovered, with a warning that the file is damaged.
+    /// </summary>
+    internal static List<Visit> CarveDamaged(BrowserProfile profile, DbSnapshot snap, List<string> notes, List<string> warnings, Func<SqliteCarver.Result> carve)
+    {
+        var who = $"{profile.Browser} ({profile.Name}) for {profile.User}";
+        notes.AddRange(snap.Warnings.Select(w => $"{who}: {w}"));
+        try
+        {
+            var r = carve();
+            warnings.Add($"{who}: the history file {Path.GetFileName(snap.SourcePath)} is damaged and could not be opened. " +
+                         $"{r.Visits.Count} visit{(r.Visits.Count == 1 ? " was" : "s were")} carved from its raw bytes and are marked \"Recovered (deleted)\"; " +
+                         "some of them may not have been deleted. Searches and downloads from this file are not shown.");
+            return r.Visits.Select(v => v with { OriginNote = DamagedNote }).ToList();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            warnings.Add($"{who}: the history file {Path.GetFileName(snap.SourcePath)} is damaged and could not be opened or searched: {e.Message.Split('\n')[0].Trim()}");
             return [];
         }
     }

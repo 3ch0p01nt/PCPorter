@@ -59,15 +59,29 @@ public static class FirefoxHistoryReader
         List<Bookmark> bookmarks;
         List<Download> downloads;
         using (var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "places.sqlite"), workFolder))
-        using (var conn = snap.Open())
         {
-            var urlSearches = new List<Search>();
-            visits = ReadVisits(conn, profile, urlSearches, ct);
-            searches = ChromiumHistoryReader.MergeSearches([], urlSearches);
-            bookmarks = ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(conn, profile));
-            downloads = ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(conn, profile, stillOnDisk, notes, ct));
-            visits.AddRange(ChromiumHistoryReader.Carve(profile, snap, notes, warnings,
-                () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, conn, DateTimeOffset.UtcNow, ct)));
+            SqliteConnection? conn = null;
+            try
+            {
+                conn = snap.Open();
+                var live = conn;
+                var urlSearches = new List<Search>();
+                visits = ReadVisits(conn, profile, urlSearches, ct);
+                searches = ChromiumHistoryReader.MergeSearches([], urlSearches);
+                bookmarks = ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(live, profile));
+                downloads = ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(live, profile, stillOnDisk, notes, ct));
+                visits.AddRange(ChromiumHistoryReader.Carve(profile, snap, notes, warnings,
+                    () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
+            }
+            catch (SqliteException e) when (ChromiumHistoryReader.IsDamaged(e))
+            {
+                visits = ChromiumHistoryReader.CarveDamaged(profile, snap, notes, warnings,
+                    () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, null, DateTimeOffset.UtcNow, ct));
+                searches = [];
+                bookmarks = [];
+                downloads = [];
+            }
+            finally { conn?.Dispose(); }
         }
         var forms = ChromiumHistoryReader.Part(profile, "saved form entries", warnings, () => ReadForms(profile, workFolder, notes, ct));
         var tabs = ChromiumHistoryReader.Part(profile, "open and recently closed tabs", warnings, () => ReadSession(profile, notes));

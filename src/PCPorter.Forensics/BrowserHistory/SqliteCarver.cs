@@ -22,7 +22,7 @@ public static class SqliteCarver
     static readonly DateTimeOffset Earliest = new(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
     internal const string FreeSpace = "free space", OlderCopy = "earlier page version";
 
-    public static Result Chromium(BrowserProfile profile, byte[]? main, byte[]? wal, SqliteConnection live, DateTimeOffset now, CancellationToken ct = default)
+    public static Result Chromium(BrowserProfile profile, byte[]? main, byte[]? wal, SqliteConnection? live, DateTimeOffset now, CancellationToken ct = default)
     {
         var urls = Layout.FromSchema(live, "urls", Role.Urls, new()
         {
@@ -50,7 +50,7 @@ public static class SqliteCarver
             t => ChromiumHistoryReader.MapTransition(unchecked((uint)t)), micros => Math.Max(0, micros / 1_000_000));
     }
 
-    public static Result Firefox(BrowserProfile profile, byte[]? main, byte[]? wal, SqliteConnection live, DateTimeOffset now, CancellationToken ct = default)
+    public static Result Firefox(BrowserProfile profile, byte[]? main, byte[]? wal, SqliteConnection? live, DateTimeOffset now, CancellationToken ct = default)
     {
         var places = Layout.FromSchema(live, "moz_places", Role.Urls, new()
         {
@@ -128,6 +128,7 @@ public static class SqliteCarver
                 for (int i = 0; i <= last; i++) frames[i] = frames[i] with { Committed = true };
             }
         }
+        if (pageSize == 0) pageSize = GuessPageSize(main);
         if (pageSize == 0) return;
 
         // Current version of each page.
@@ -188,6 +189,19 @@ public static class SqliteCarver
         }
     }
 
+    /// <summary>
+    /// A file whose header is damaged and has no log: the header's page-size field if it still holds a valid value, else the
+    /// largest page size (up to 64 KB) that divides the file. Too large is harmless (pages are searched offset by offset and
+    /// rows never cross a real page boundary); too small would cut rows in two.
+    /// </summary>
+    static int GuessPageSize(byte[] main)
+    {
+        if (main.Length >= 100 && PageSizeOf(BE16(main, 16)) is var fromHeader and > 0 && main.Length % fromHeader == 0) return fromHeader;
+        for (int size = 65536; size >= 512; size >>= 1)
+            if (main.Length >= size && main.Length % size == 0) return size;
+        return 0;
+    }
+
     static void Tick(uint n, CancellationToken ct) { if ((n & 63) == 0) ct.ThrowIfCancellationRequested(); }
 
     static int PageSizeOf(int v) => v == 1 ? 65536 : v is >= 512 and <= 32768 && (v & (v - 1)) == 0 ? v : 0;
@@ -212,6 +226,19 @@ public static class SqliteCarver
 
     // ---------------------------------------------------------------- table layouts
 
+    /// <summary>Column order of a freshly created table in current Chrome and Firefox, for files whose schema cannot be read.</summary>
+    static readonly Dictionary<string, string[]> DefaultColumns = new(StringComparer.Ordinal)
+    {
+        ["urls"] = ["id", "url", "title", "visit_count", "typed_count", "last_visit_time", "hidden"],
+        ["visits"] = ["id", "url", "visit_time", "from_visit", "external_referrer_url", "transition", "segment_id", "visit_duration",
+            "incremented_omnibox_typed_score", "opener_visit", "originator_cache_guid", "originator_visit_id", "originator_from_visit",
+            "originator_opener_visit", "is_known_to_sync", "consider_for_ntp_most_visited", "visited_link_id", "app_id"],
+        ["moz_places"] = ["id", "url", "title", "rev_host", "visit_count", "hidden", "typed", "frecency", "last_visit_date", "guid",
+            "foreign_count", "url_hash", "description", "preview_image_url", "site_name", "origin_id", "recalc_frecency", "alt_frecency",
+            "recalc_alt_frecency"],
+        ["moz_historyvisits"] = ["id", "from_visit", "place_id", "visit_date", "visit_type", "session", "source", "triggeringPlaceId"],
+    };
+
     internal enum Role { Urls, Visits }
     internal enum Kind : byte { RowidNull, Int, IntOrNull, Text, TextOrNull, Any }
 
@@ -224,19 +251,22 @@ public static class SqliteCarver
         public required int MinCols { get; init; }
         public int Url = -1, Title = -1, Time = -1, Hidden = -1, RevHost = -1, Ref = -1, KindCol = -1, Duration = -1;
 
-        public static Layout? FromSchema(SqliteConnection conn, string table, Role role, Dictionary<string, Kind> kinds,
+        /// <param name="conn">The live database; null when it cannot be opened (damaged), then the browser's own current column order is used.</param>
+        public static Layout? FromSchema(SqliteConnection? conn, string table, Role role, Dictionary<string, Kind> kinds,
             string? url = null, string? title = null, string? time = null, string? hidden = null, string? revHost = null,
             string? reference = null, string? kind = null, string? duration = null)
         {
             var names = new List<string>();
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"PRAGMA table_info({table})";      // constant table names only
-                using var r = cmd.ExecuteReader();
-                while (r.Read()) names.Add(r.GetString(1));
-            }
-            catch (SqliteException) { return null; }
+            if (conn is null) names.AddRange(DefaultColumns[table]);
+            else
+                try
+                {
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = $"PRAGMA table_info({table})";      // constant table names only
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) names.Add(r.GetString(1));
+                }
+                catch (SqliteException) { names.AddRange(DefaultColumns[table]); }
             if (names.Count == 0 || names.Count > 60 || names[0] != "id") return null;
             int At(string? n) => n is null ? -1 : names.IndexOf(n);
             var required = new[] { url, title, time, reference, kind }.Where(n => n is not null).Select(At).ToList();
@@ -616,9 +646,10 @@ public static class SqliteCarver
         public readonly HashSet<long> VisitIds = [];
         public readonly HashSet<(string Url, long Second)> VisitKeys = [];
 
-        public static LiveIndex Read(SqliteConnection conn, string urlSql, string visitSql)
+        public static LiveIndex Read(SqliteConnection? conn, string urlSql, string visitSql)
         {
             var index = new LiveIndex();
+            if (conn is null) return index;                      // a damaged file: nothing could be read live
             try
             {
                 using var cmd = conn.CreateCommand();
