@@ -8,6 +8,7 @@
     <Project Path="src/PCPorter.Security/PCPorter.Security.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PCPorter.App.Tests/PCPorter.App.Tests.csproj" />
     <Project Path="tests/PCPorter.Collectors.Tests/PCPorter.Collectors.Tests.csproj" />
     <Project Path="tests/PCPorter.Core.Tests/PCPorter.Core.Tests.csproj" />
     <Project Path="tests/PCPorter.Forensics.Tests/PCPorter.Forensics.Tests.csproj" />

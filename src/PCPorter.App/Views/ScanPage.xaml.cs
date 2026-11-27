@@ -61,11 +61,11 @@ public partial class ScanPage : Page
     /// <summary>The last finished check, while its report still exists (otherwise it is forgotten).</summary>
     void ShowLastRun()
     {
-        if (Remembered.Pages.RecallLastRun(MemoryKey) is not { } last) return;
+        if (Remembered.LastRunOf(MemoryKey) is not { } last) return;
         _report = last.ReportPath; _case = last.CaseFolder;
         Announce(PageMemoryStore.Describe("Last check", last));
         OpenReport.Visibility = Visibility.Visible;
-        OpenFolder.Visibility = _case is not null && Directory.Exists(_case) ? Visibility.Visible : Visibility.Collapsed;
+        OpenFolder.Visibility = CaseLinks.IsCaseFolder(_case) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void RememberRun(RunOutcome outcome, string summary) =>
@@ -146,8 +146,8 @@ public partial class ScanPage : Page
                 Show("Done", detail, gaps ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
                 RememberRun(gaps ? RunOutcome.Partial : RunOutcome.Ok, $"{finished} {detail}");
             }
-            OpenReport.Visibility = _report is null ? Visibility.Collapsed : Visibility.Visible;
-            OpenFolder.Visibility = Visibility.Visible;
+            OpenReport.Visibility = CaseLinks.IsReport(_report) ? Visibility.Visible : Visibility.Collapsed;
+            OpenFolder.Visibility = CaseLinks.IsCaseFolder(_case) ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (OperationCanceledException)
         {
@@ -198,8 +198,8 @@ public partial class ScanPage : Page
     Card AddCard(string title) { var c = new Card(title); _cards.Add(c); return c; }
 
     void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); CancelButton.IsEnabled = false; Announce("Stopping after the current step..."); }
-    void OpenReport_Click(object sender, RoutedEventArgs e) { if (_report is not null) Process.Start(new ProcessStartInfo(_report) { UseShellExecute = true }); }
-    void OpenFolder_Click(object sender, RoutedEventArgs e) { if (_case is not null) Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), _case); }
+    void OpenReport_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenReport(_report);
+    void OpenFolder_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenCaseFolder(_case);
 
     void Show(string title, string message, InfoBarSeverity severity)
     {

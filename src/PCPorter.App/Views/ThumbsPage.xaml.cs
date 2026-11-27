@@ -30,7 +30,7 @@ public partial class ThumbsPage : Page
         Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
         AllUsers.IsEnabled = _elevated;
         if (!_elevated) { AllUsers.IsChecked = false; AllUsers.ToolTip = "Needs PCPorter to run as administrator."; }
-        if (Remembered.Pages.RecallLastRun(MemoryKey) is { } last)
+        if (Remembered.LastRunOf(MemoryKey) is { } last)
         {
             _reportPath = last.ReportPath;
             Status.Text = PageMemoryStore.Describe("Last gallery", last);
@@ -84,7 +84,7 @@ public partial class ThumbsPage : Page
             var warnings = r.Scan.Warnings.Count + r.FolderWarnings.Count;
             var message = msg + (warnings > 0 ? $" {warnings} parts could not be read; see the notes in the report." : "");
             Show("Gallery ready", message, warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
-            OpenReport.Visibility = Visibility.Visible;
+            OpenReport.Visibility = CaseLinks.IsReport(_reportPath) ? Visibility.Visible : Visibility.Collapsed;
             Status.Text = r.ReportPath;
             RememberRun(warnings > 0 ? RunOutcome.Partial : RunOutcome.Ok, message);
         }
@@ -105,11 +105,7 @@ public partial class ThumbsPage : Page
 
     void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); Status.Text = "Cancelling..."; }
 
-    void OpenReport_Click(object sender, RoutedEventArgs e)
-    {
-        if (_reportPath is not null && File.Exists(_reportPath))
-            Process.Start(new ProcessStartInfo(_reportPath) { UseShellExecute = true });
-    }
+    void OpenReport_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenReport(_reportPath);
 
     void SetBusy(bool busy)
     {
