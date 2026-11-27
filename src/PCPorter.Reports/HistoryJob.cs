@@ -8,10 +8,12 @@ using PCPorter.Forensics.BrowserHistory;
 namespace PCPorter.Reports;
 
 /// <param name="AllUsers">Read every account (live: needs administrator rights). Offline drives always show every account.</param>
-/// <param name="RestorePoints">Also look in existing restore points (read in a later version; kept for the CLI and app).</param>
+/// <param name="RestorePoints">Also look for older history in existing restore points (live runs as administrator only).</param>
 /// <param name="ExtraNotes">Notes from the caller (e.g. "not running as administrator").</param>
 /// <param name="CurrentUserSid">Test hook: whose account a live run reads. Default: the account running PCPorter.</param>
-public sealed record HistoryJobOptions(bool AllUsers = false, bool RestorePoints = true, IReadOnlyList<string>? ExtraNotes = null, string? CurrentUserSid = null);
+/// <param name="RestorePointRoots">Test hook: restore points to read instead of this PC's shadow copies.</param>
+public sealed record HistoryJobOptions(bool AllUsers = false, bool RestorePoints = true, IReadOnlyList<string>? ExtraNotes = null, string? CurrentUserSid = null,
+    IReadOnlyList<RestorePointRoot>? RestorePointRoots = null);
 
 public sealed record HistoryJobResult(string ReportPath, string CaseFolder, HistoryScan Scan, IReadOnlyList<string> FolderWarnings);
 
@@ -85,6 +87,13 @@ public static class HistoryJob
                 }
                 foreach (var b in later)
                     notes.Add($"{b} history was found but is not read by this version of PCPorter.");
+
+                if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && profiles.Count > 0)
+                {
+                    progress?.Report($"Looking for older history in {roots.Count} restore point(s)");
+                    var rp = RestorePointHistory.Read(profiles, visits, roots, work, ct);
+                    visits.AddRange(rp.Visits); notes.AddRange(rp.Notes); warnings.AddRange(rp.Warnings);
+                }
             }
 
             var scan = new HistoryScan(profiles, coverage, visits.OrderBy(v => v.When).ToList(), searches.OrderBy(s => s.When).ToList(),
@@ -128,6 +137,29 @@ public static class HistoryJob
             else list.Add(u);
         }
         return list;
+    }
+
+    /// <summary>
+    /// The restore points to search: the test hook's, else this PC's existing shadow copies of C: (live and elevated only;
+    /// listed, never created). Otherwise a note says why none were searched.
+    /// </summary>
+    static IReadOnlyList<RestorePointRoot>? RestorePointRoots(ISystemSource source, HistoryJobOptions options, List<string> notes)
+    {
+        if (!options.RestorePoints) return null;
+        if (options.RestorePointRoots is { } given) return given;
+        if (!source.IsLive)
+        {
+            notes.Add("Restore points belong to the running PC, so they were not searched when reading another PC's drive.");
+            return null;
+        }
+        if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+        {
+            notes.Add("PCPorter is not running as administrator, so restore points were not searched for older history.");
+            return null;
+        }
+        var roots = RestorePointHistory.ShadowCopies();
+        if (roots.Count == 0) notes.Add("No restore points of C: were found, so there was no older history to search.");
+        return roots;
     }
 
     /// <summary>Is a downloaded file still at its path on the scanned PC? Null when that cannot be checked.</summary>

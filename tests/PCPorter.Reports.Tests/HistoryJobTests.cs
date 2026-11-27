@@ -242,6 +242,48 @@ public sealed class HistoryJobTests : IDisposable
     }
 
     [Fact]
+    public void Older_visits_from_restore_points_are_added_once_and_marked()
+    {
+        var bob = Path.Combine(_drive, "Users", "bob");
+        const string rel = @"AppData\Local\Google\Chrome\User Data\Default";
+        ChromeHistory(Path.Combine(bob, rel), c =>
+        {
+            Sql(c, $"INSERT INTO urls(id, url, title, last_visit_time) VALUES (1, 'https://now.example/', 'Now', {WebKit(T0)})");
+            Sql(c, $"INSERT INTO visits(url, visit_time, transition) VALUES (1, {WebKit(T0)}, {0x30000001})");
+        });
+        var copy = Path.Combine(_out, "restore-point-copy");          // stands in for a shadow copy device
+        ChromeHistory(Path.Combine(copy, @"Users\bob", rel), c =>
+        {
+            Sql(c, $"INSERT INTO urls(id, url, title, last_visit_time) VALUES (1, 'https://now.example/', 'Now', {WebKit(T0)})");
+            Sql(c, $"INSERT INTO urls(id, url, title, last_visit_time) VALUES (2, 'https://old.example/', 'Old', {WebKit(T0.AddDays(-50))})");
+            Sql(c, $"INSERT INTO visits(url, visit_time, transition) VALUES (1, {WebKit(T0)}, {0x30000001})");
+            Sql(c, $"INSERT INTO visits(url, visit_time, transition) VALUES (2, {WebKit(T0.AddDays(-50))}, {0x30000000})");
+        });
+        var root = new RestorePointRoot(copy, new DateTimeOffset(2026, 1, 20, 4, 0, 0, TimeSpan.Zero),
+            p => p.StartsWith(_drive, StringComparison.OrdinalIgnoreCase) ? copy + p[_drive.Length..] : null);
+        using var source = new FakeSystemSource(_drive, users: [new UserProfile("S-1-5-21-1-2-3-1001", "bob", bob, null, @"C:\Users\bob")]);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(RestorePointRoots: [root]), now: Now);
+
+        var old = Assert.Single(r.Scan.Visits, v => v.Origin == Origin.RestorePoint);
+        Assert.Equal(("https://old.example/", T0.AddDays(-50), "restore point 2026-01-20"), (old.Url, old.When, old.OriginNote));
+        Assert.Equal(2, r.Scan.Visits.Count);
+        Assert.Equal(1, r.Scan.Coverage.Single().Visits);
+        Assert.Equal(1, HistoryJob.Summarize(r).Recovered);
+        Assert.Contains(r.Scan.Notes, n => n.Contains("1 restore point was searched"));
+        using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
+        Assert.Contains("\"Origin\":\"RestorePoint\"", db.Search("old.example").Single(a => a.Category == "WebHistory.Visit").Detail);
+
+        // Without the hook an offline drive has no restore points of its own: a note; turned off: nothing at all.
+        var offline = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+        Assert.Contains(offline.Scan.Notes, n => n.Contains("restore points were not searched", StringComparison.OrdinalIgnoreCase) || n.Contains("Restore points belong to the running PC"));
+        Assert.DoesNotContain(offline.Scan.Visits, v => v.Origin == Origin.RestorePoint);
+        var off = HistoryJob.Run(_out, source, new HistoryJobOptions(RestorePoints: false, RestorePointRoots: [root]), now: Now);
+        Assert.DoesNotContain(off.Scan.Visits, v => v.Origin == Origin.RestorePoint);
+        Assert.DoesNotContain(off.Scan.Notes, n => n.Contains("restore point", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Live_runs_read_only_the_current_account_unless_all_users_is_set()
     {
         using var offline = Source();

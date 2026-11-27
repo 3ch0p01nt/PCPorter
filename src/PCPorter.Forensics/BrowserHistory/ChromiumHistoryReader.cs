@@ -46,6 +46,14 @@ public static class ChromiumHistoryReader
         return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings };
     }
 
+    /// <summary>Only the visits of a profile's History database (for older copies, e.g. in restore points).</summary>
+    public static List<Visit> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
+    {
+        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder);
+        using var conn = snap.Open();
+        return ReadVisits(conn, profile, [], ct);
+    }
+
     /// <summary>Reads one optional part of a profile; if it fails, the rest of the profile is still shown.</summary>
     internal static List<T> Part<T>(BrowserProfile profile, string what, List<string> warnings, Func<List<T>> read)
     {

@@ -74,6 +74,14 @@ public static class FirefoxHistoryReader
         return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings };
     }
 
+    /// <summary>Only the visits of a profile's places.sqlite (for older copies, e.g. in restore points).</summary>
+    public static List<Visit> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
+    {
+        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "places.sqlite"), workFolder);
+        using var conn = snap.Open();
+        return ReadVisits(conn, profile, [], ct);
+    }
+
     static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct)
     {
         var list = new List<Visit>();
