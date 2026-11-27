@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Templates\*.html" />
+    <EmbeddedResource Include="Templates\*.js" />
   </ItemGroup>
 
 </Project>

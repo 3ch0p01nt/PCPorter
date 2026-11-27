@@ -159,6 +159,7 @@
           "Lnk": "[2026.10.11, )",
           "Microsoft.Data.Sqlite": "[11.0.0, )",
           "Microsoft.Database.ManagedEsent": "[3.2.0, )",
+          "PCPorter.Collectors": "[0.1.0, )",
           "PCPorter.Core": "[0.1.0, )",
           "System.IO.Hashing": "[11.0.0, )"
         }

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Web history on this PC - PCPorter</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg:#f6f7f9; --panel:#fff; --text:#1b1d21; --muted:#5d6470; --line:#e2e5ea; --accent:#2f6fde; --hover:#f0f3f8; --sel:#dde8fb;
+    --warn-bg:#fff6e0; --warn-line:#f0c96a; --rec:#7a43c9; --shadow:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.05); }
+  :root[data-theme="dark"] {
+    --bg:#15171b; --panel:#1e2126; --text:#e8eaee; --muted:#a2a9b5; --line:#30343b; --accent:#7aa6ff; --hover:#262a31; --sel:#283a5c;
+    --warn-bg:#2d2615; --warn-line:#6b5a26; --rec:#bd95ff; --shadow:none; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 "Segoe UI Variable","Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { position:sticky; top:0; z-index:5; background:var(--panel); border-bottom:1px solid var(--line); padding:12px 24px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:20px; margin:0; font-weight:600; }
+  nav { display:flex; gap:10px; flex-wrap:wrap; font-size:13px; }
+  nav button { border:0; background:none; color:var(--accent); padding:2px 4px; }
+  .meta { color:var(--muted); font-size:12.5px; }
+  .spacer { flex:1; }
+  button, select, input { font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  button { cursor:pointer; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  main { padding:16px 24px 48px; max-width:1680px; margin:0 auto; }
+  section { margin:26px 0; }
+  h2 { font-size:17px; margin:0 0 8px; font-weight:600; }
+  h3 { font-size:14px; margin:0 0 6px; font-weight:600; }
+  .banner { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:8px; padding:10px 14px; margin-bottom:12px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; box-shadow:var(--shadow); }
+  .tile .n { font-size:24px; font-weight:600; }
+  .tile .l { color:var(--muted); font-size:12.5px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; box-shadow:var(--shadow); }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:12px; }
+  .charts svg { width:100%; height:auto; display:block; }
+  svg text { fill:var(--muted); font-size:11px; }
+  svg .bar rect { fill:var(--accent); opacity:.75; }
+  svg .bar.click { cursor:pointer; }
+  svg .bar.click:hover rect, svg .bar.click:focus rect { opacity:1; }
+  svg .axis { stroke:var(--line); }
+  svg .hm { fill:var(--accent); }
+  table.plain { border-collapse:collapse; width:100%; font-size:13px; }
+  table.plain th, table.plain td { border-bottom:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top; }
+  table.plain th { color:var(--muted); font-weight:600; }
+  .muted { color:var(--muted); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0; }
+  /* report kit: virtual table */
+  .vt-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .vt-q { flex:1 1 240px; min-width:180px; }
+  .vt-count { color:var(--muted); margin-left:auto; }
+  .vt-grid { display:grid; gap:0 10px; align-items:center; }
+  .vt-head { padding:4px 8px; background:var(--panel); border:1px solid var(--line); border-bottom:0; border-radius:8px 8px 0 0; }
+  .vt-h { border:0; background:none; padding:2px 0; text-align:left; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vt-h.asc::after { content:" (up)"; color:var(--muted); font-weight:400; }
+  .vt-h.desc::after { content:" (down)"; color:var(--muted); font-weight:400; }
+  .vt-filters { padding:4px 8px; background:var(--panel); border:1px solid var(--line); border-top:0; border-bottom:1px solid var(--line); }
+  .vt-filters input, .vt-filters select { width:100%; min-width:0; padding:2px 5px; font-size:12px; }
+  .vt-vp { overflow:auto; position:relative; background:var(--panel); border:1px solid var(--line); border-top:0; border-radius:0 0 8px 8px; }
+  .vt-spacer { position:relative; min-width:100%; }
+  .vt-row { position:absolute; left:0; right:0; padding:0 8px; border-bottom:1px solid var(--line); font-size:13px; }
+  .vt-row:hover { background:var(--hover); }
+  .vt-row.sel { background:var(--sel); }
+  .vt-c { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vt-empty { color:var(--muted); padding:24px; text-align:center; }
+  .rec { color:var(--rec); }
+  .detail { margin-top:8px; display:grid; grid-template-columns:max-content minmax(0,1fr) max-content; gap:4px 12px; align-items:start; font-size:13px; }
+  .detail dt { color:var(--muted); }
+  .detail dd { margin:0; word-break:break-all; }
+  details > summary { cursor:pointer; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  @media print { header nav, .vt-filters, .vt-bar, .toolbar { display:none !important; } body { background:#fff; color:#000; } .vt-vp { height:auto !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Web history on this PC</h1>
+  <div class="meta" id="meta"></div>
+  <nav aria-label="Sections">
+    <button data-go="s-coverage">Coverage</button><button data-go="s-charts">Charts</button><button data-go="s-visits">Visits</button>
+    <button data-go="s-searches">Searches</button><button data-go="s-downloads">Downloads</button><button data-go="s-more">Bookmarks, tabs, forms</button>
+    <button data-go="s-method">Method and limits</button>
+  </nav>
+  <div class="spacer"></div>
+  <label>Theme <select id="theme" aria-label="Colour theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</header>
+<main>
+  <details class="banner" role="note" id="howto">
+    <summary><strong>How to read this report</strong></summary>
+    Every row comes from a web browser's own history files, copied and read without starting the browser. A visit means the
+    browser recorded opening that address at that time; it does not prove a person looked at it (pages can open themselves,
+    and other people may use the same account). Browsers delete old history on their own, and private windows leave almost
+    nothing. Addresses are shown as text and are never opened from this page. Secrets in addresses (passwords, tokens) are masked.
+  </details>
+  <div class="banner" id="notes" role="status" hidden></div>
+
+  <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+  <section id="s-coverage">
+    <h2>What was read and how far back it goes</h2>
+    <div class="card"><table class="plain" id="coverage"><thead><tr><th>Account</th><th>Browser</th><th>Profile</th><th>Visits</th><th>First visit</th><th>Last visit</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="s-charts">
+    <h2>Charts</h2>
+    <div class="charts">
+      <div class="card"><h3 id="perday-title">Visits per day</h3><svg id="perday" aria-labelledby="perday-title"></svg><div class="muted" style="font-size:12px">Click a bar to show those visits.</div></div>
+      <div class="card"><h3 id="heat-title">When: day of week and hour (this computer's time zone)</h3><svg id="heat" aria-labelledby="heat-title"></svg></div>
+      <div class="card"><h3 id="top-title">Most visited sites</h3><svg id="top" aria-labelledby="top-title"></svg><div class="muted" style="font-size:12px">Click a site to show its visits.</div></div>
+      <div class="card"><h3 id="how-title">How pages were opened</h3><svg id="how" aria-labelledby="how-title"></svg></div>
+    </div>
+  </section>
+
+  <section id="s-visits">
+    <h2>Visits</h2>
+    <div class="toolbar">
+      <label>From <input type="date" id="from" aria-label="From date"></label>
+      <label>To <input type="date" id="to" aria-label="To date"></label>
+      <button id="clear" type="button">Clear filters</button>
+    </div>
+    <div id="visits"></div>
+    <dl class="detail" id="visit-detail" hidden></dl>
+  </section>
+
+  <section id="s-searches">
+    <h2>Searches</h2>
+    <div id="searches"></div>
+  </section>
+
+  <section id="s-downloads">
+    <h2>Downloads</h2>
+    <div id="downloads"></div>
+    <dl class="detail" id="download-detail" hidden></dl>
+  </section>
+
+  <section id="s-more">
+    <h2>Bookmarks</h2>
+    <div id="bookmarks"></div>
+    <h2 style="margin-top:22px">Open and recently closed tabs</h2>
+    <div id="tabs"></div>
+    <details id="forms-box" style="margin-top:22px">
+      <summary><strong>Form entries</strong> <span class="muted" id="forms-count"></span> - text typed into web forms (click to show)</summary>
+      <div id="forms"></div>
+    </details>
+  </section>
+
+  <section id="s-method">
+    <h2>Method and limits</h2>
+    <div class="card">
+      <ul>
+        <li>Read from: Chromium-family browsers (Chrome, Edge, Brave, Opera, Vivaldi, Chromium). Each History file was copied together with its
+          not-yet-saved changes (the write-ahead log) into the case's private work folder and read from the copy. The originals were not changed.</li>
+        <li>Never read: saved passwords, cookies, encryption keys, payment cards and bank details. Form fields that look like passwords, card or account numbers are dropped.</li>
+        <li>Chrome-family browsers keep about 90 days of visits; older visits are gone unless they are recovered from deleted space or a restore point.</li>
+        <li>Private (InPrivate / Incognito) windows leave almost no history. A missing visit does not prove a site was never opened.</li>
+        <li>Times are recorded by the browser in UTC and shown here in this computer's time zone. The CSV export contains UTC times.</li>
+        <li>"Recovered" rows come from deleted space inside the browser's files or from older copies in restore points; they are marked in the Origin column.</li>
+      </ul>
+    </div>
+    <details style="margin-top:12px"><summary>Processing notes and warnings</summary><ul id="warnings"></ul></details>
+  </section>
+  <div class="sr" id="live" aria-live="polite"></div>
+</main>
+
+<script>
+/*__PCPORTER_KIT__*/
+</script>
+<script type="application/json" id="data">__PCPORTER_DATA__</script>
+<script>
+(() => {
+  "use strict";
+  const { el, vtable, barChart, heatmap, hashState, copyText, coll } = PCK;
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const $ = id => document.getElementById(id);
+  const S = data.strings, P = data.profiles, HOW = data.howNames, ORG = data.originNames;
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+                  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } } };
+  const pad = n => String(n).padStart(2, "0");
+  const fmt = s => { if (s == null) return ""; const d = new Date(s * 1000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  const utc = s => s == null ? "" : new Date(s * 1000).toISOString().replace("T", " ").slice(0, 19) + "Z";
+  const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const howText = { Link: "Clicked a link", Typed: "Typed or searched", Bookmark: "From a bookmark", Redirect: "Passed through (redirect)", Reload: "Reloaded",
+                    Generated: "Address bar suggestion", FormSubmit: "Sent a form", Other: "Other" };
+  const originText = { Live: "Browser history", Carved: "Recovered (deleted)", RestorePoint: "Recovered (restore point)" };
+  const stateText = { InProgress: "In progress", Complete: "Complete", Cancelled: "Cancelled", Interrupted: "Interrupted", Unknown: "Unknown" };
+  const prof = i => P[i] || { user: "?", browser: "?", name: "?" };
+  const profText = i => `${prof(i).browser} - ${prof(i).name}`;
+  const hostCache = new Map();
+  const hostOf = u => { let h = hostCache.get(u); if (h === undefined) { const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?([^/?#:]+)/i.exec(u); h = m ? m[1].toLowerCase().replace(/^www\./, "") : ""; hostCache.set(u, h); } return h; };
+  const size = b => b == null ? "" : b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : b < 1073741824 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1073741824).toFixed(2)} GB`;
+  const dur = s => !s ? "" : s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min`;
+  const visits = data.visits;
+
+  // Header, theme, navigation
+  $("meta").textContent = `${data.meta.computer} - generated ${fmt(Date.parse(data.meta.generatedUtc) / 1000)} - PCPorter ${data.meta.toolVersion} - accounts: ${(data.meta.users || []).join(", ") || "none"}`;
+  const applyTheme = t => { const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches); document.documentElement.dataset.theme = dark ? "dark" : "light"; };
+  const theme = store.get("pcporter-theme", "system"); $("theme").value = theme; applyTheme(theme);
+  $("theme").onchange = () => { store.set("pcporter-theme", $("theme").value); applyTheme($("theme").value); };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme($("theme").value));
+  document.querySelectorAll("nav button").forEach(b => b.onclick = () => $(b.dataset.go).scrollIntoView({ behavior: "smooth" }));
+  if (!store.get("pcporter-seen-history-howto", false)) { $("howto").open = true; store.set("pcporter-seen-history-howto", true); }
+
+  // Notes
+  if (data.notes && data.notes.length) {
+    $("notes").hidden = false;
+    $("notes").append(el("strong", { textContent: "Note: " }), data.notes[0]);
+    if (data.notes.length > 1) {
+      const more = el("details", {}, [el("summary", { textContent: `${data.notes.length - 1} more note(s)` })]);
+      data.notes.slice(1).forEach(n => more.append(el("p", { textContent: n })));
+      $("notes").append(more);
+    }
+  }
+  (data.warnings && data.warnings.length ? data.warnings : ["No warnings."]).forEach(w => $("warnings").append(el("li", { textContent: w })));
+
+  // Tiles
+  const sites = new Set(); let typed = 0, recovered = 0;
+  for (const v of visits) { sites.add(hostOf(S[v[1]])); if (HOW[v[4]] === "Typed") typed++; if (ORG[v[6]] !== "Live") recovered++; }
+  sites.delete("");
+  [["Visits", visits.length], ["Different sites", sites.size], ["Typed or searched", typed], ["Searches", data.searches.length],
+   ["Downloads", data.downloads.length], ["Browser profiles", P.length], ["Recovered visits", recovered]]
+    .filter(([l, n]) => n > 0 || l === "Visits")
+    .forEach(([l, n]) => $("tiles").append(el("div", { className: "tile" }, [el("div", { className: "n", textContent: n.toLocaleString() }), el("div", { className: "l", textContent: l })])));
+
+  // Coverage
+  const cov = $("coverage").tBodies[0];
+  if (!data.coverage.length) cov.append(el("tr", {}, [el("td", { colSpan: 7, className: "muted", textContent: "No browser history was found for the accounts read." })]));
+  data.coverage.forEach(c => cov.append(el("tr", {}, [prof(c.p).user, prof(c.p).browser, prof(c.p).name, c.visits.toLocaleString(), fmt(c.earliest), fmt(c.latest), c.note || ""]
+    .map(t => el("td", { textContent: t })))));
+
+  // Visits table
+  const filterFrom = () => $("from").value ? new Date($("from").value + "T00:00:00").getTime() / 1000 : null;
+  const filterTo = () => $("to").value ? new Date($("to").value + "T00:00:00").getTime() / 1000 + 86400 : null;
+  // The view in the address (read before the table exists: building it rewrites the address)
+  const hq = hashState.get("q"), hf = hashState.get("from"), ht = hashState.get("to");
+  if (hf) $("from").value = hf;
+  if (ht) $("to").value = ht;
+  let fromS = filterFrom(), toS = filterTo(), visitTable = null, ready = false;
+  visitTable = vtable($("visits"), [
+    { label: "When", get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "11.5rem", descFirst: true },
+    { label: "Title", get: v => v[2] >= 0 ? S[v[2]] : "", width: "minmax(0,1.3fr)", filter: true },
+    { label: "Address", get: v => S[v[1]], width: "minmax(0,2fr)", filter: true },
+    { label: "How", get: v => howText[HOW[v[4]]] || HOW[v[4]], width: "10rem", filter: "select" },
+    { label: "Time on page", get: v => v[5], text: v => dur(v[5]), width: "7rem" },
+    { label: "Browser", get: v => profText(v[0]), width: "11rem", filter: "select" },
+    { label: "Account", get: v => prof(v[0]).user, width: "7rem", filter: "select" },
+    { label: "Origin", get: v => (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` (${S[v[7]]})` : ""), width: "10rem", filter: "select", cls: "" },
+  ], visits, {
+    name: "Visits", sort: 0, desc: true, height: 560, placeholder: "Search addresses, titles, browsers...",
+    filter: v => (fromS == null || v[3] >= fromS) && (toS == null || v[3] < toS),
+    onSelect: v => showDetail($("visit-detail"), [["Address", S[v[1]], true], ["Title", v[2] >= 0 ? S[v[2]] : ""], ["When", `${fmt(v[3])} (UTC ${utc(v[3])})`],
+      ["How", howText[HOW[v[4]]] || HOW[v[4]]], ["Browser", `${profText(v[0])} (${prof(v[0]).user})`], ["Origin", (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` - ${S[v[7]]}` : "")]]),
+    onChange: () => { if (ready) hashState.set({ q: visitTable.query(), from: $("from").value, to: $("to").value }); },
+  });
+  function applyDates() { fromS = filterFrom(); toS = filterTo(); visitTable.refresh(); }
+  $("from").addEventListener("change", applyDates); $("to").addEventListener("change", applyDates);
+  $("clear").onclick = () => { $("from").value = ""; $("to").value = ""; fromS = toS = null; visitTable.setQuery(""); };
+
+  function showDetail(dl, rows) {
+    dl.hidden = false;
+    dl.replaceChildren(...rows.filter(r => r[1]).flatMap(([k, v, copy]) => {
+      const b = copy ? el("button", { type: "button", textContent: "Copy" }) : el("span");
+      if (copy) b.onclick = async () => { $("live").textContent = (await copyText(v)) ? "Copied" : "Could not copy"; };
+      return [el("dt", { textContent: k }), el("dd", { textContent: v }), b];
+    }));
+  }
+
+  // Charts
+  const times = visits.map(v => v[3]);
+  if (times.length) {
+    let min = Infinity, max = -Infinity; for (const t of times) { if (t < min) min = t; if (t > max) max = t; }
+    const first = new Date(min * 1000), last = new Date(max * 1000);
+    const days = Math.round((new Date(last.getFullYear(), last.getMonth(), last.getDate()) - new Date(first.getFullYear(), first.getMonth(), first.getDate())) / 86400000) + 1;
+    const byMonth = days > 400;
+    const keyOf = d => byMonth ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}` : dayKey(d);
+    const counts = new Map();
+    for (let d = new Date(first.getFullYear(), first.getMonth(), byMonth ? 1 : first.getDate()); d <= last; byMonth ? d.setMonth(d.getMonth() + 1) : d.setDate(d.getDate() + 1)) counts.set(keyOf(d), 0);
+    for (const t of times) { const k = keyOf(new Date(t * 1000)); counts.set(k, (counts.get(k) || 0) + 1); }
+    const bars = [...counts].map(([label, value]) => ({ label, value, title: `${label}: ${value.toLocaleString()} visits` }));
+    $("perday-title").textContent = byMonth ? "Visits per month" : "Visits per day";
+    barChart($("perday"), bars, { axis: [bars[0].label, bars.at(-1).label], onClick: d => {
+      if (byMonth) { const [y, m] = d.label.split("-").map(Number); $("from").value = `${d.label}-01`; $("to").value = dayKey(new Date(y, m, 0)); }
+      else { $("from").value = d.label; $("to").value = d.label; }
+      applyDates(); $("s-visits").scrollIntoView({ behavior: "smooth" }); } });
+
+    const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    for (const t of times) { const d = new Date(t * 1000); grid[(d.getDay() + 6) % 7][d.getHours()]++; }
+    heatmap($("heat"), grid, { rows: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], cols: Array.from({ length: 24 }, (_, h) => pad(h) + ":00"), unit: "visits" });
+
+    const perHost = new Map();
+    for (const v of visits) { const h = hostOf(S[v[1]]); if (h) perHost.set(h, (perHost.get(h) || 0) + 1); }
+    barChart($("top"), [...perHost].sort((a, b) => b[1] - a[1] || coll.compare(a[0], b[0])).slice(0, 15).map(([label, value]) => ({ label, value })), {
+      horizontal: true, onClick: d => { visitTable.setQuery(d.label); $("s-visits").scrollIntoView({ behavior: "smooth" }); } });
+
+    const perHow = new Map();
+    for (const v of visits) { const h = howText[HOW[v[4]]] || HOW[v[4]]; perHow.set(h, (perHow.get(h) || 0) + 1); }
+    barChart($("how"), [...perHow].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })), { horizontal: true, labelWidth: 220 });
+  } else {
+    $("s-charts").append(el("p", { className: "muted", textContent: "No visits to chart." }));
+  }
+
+  // Searches
+  vtable($("searches"), [
+    { label: "When", get: s => s.t, text: s => fmt(s.t), csv: s => utc(s.t), width: "11.5rem", descFirst: true },
+    { label: "Searched for", get: s => s.terms, width: "minmax(0,2fr)", filter: true },
+    { label: "Engine", get: s => s.engine, width: "10rem", filter: "select" },
+    { label: "Browser", get: s => profText(s.p), width: "11rem", filter: "select" },
+    { label: "Account", get: s => prof(s.p).user, width: "7rem", filter: "select" },
+    { label: "Origin", get: s => originText[s.origin] || s.origin, width: "10rem", filter: "select" },
+  ], data.searches, { name: "Searches", sort: 0, desc: true, height: 360, emptyText: "No searches found." });
+
+  // Downloads
+  const onDiskText = d => d.onDisk === true ? "Yes" : d.onDisk === false ? "No (deleted or moved)" : "Cannot tell";
+  vtable($("downloads"), [
+    { label: "Started", get: d => d.t, text: d => fmt(d.t), csv: d => utc(d.t), width: "11.5rem", descFirst: true },
+    { label: "Saved as", get: d => d.targetPath, width: "minmax(0,1.5fr)", filter: true },
+    { label: "From address", get: d => d.url, width: "minmax(0,1.5fr)", filter: true },
+    { label: "Size", get: d => d.bytes, text: d => size(d.bytes), width: "6rem" },
+    { label: "State", get: d => stateText[d.state] || d.state, width: "7rem", filter: "select" },
+    { label: "Still on disk", get: d => onDiskText(d), width: "9rem", filter: "select" },
+    { label: "Browser", get: d => profText(d.p), width: "11rem", filter: "select" },
+    { label: "Account", get: d => prof(d.p).user, width: "7rem", filter: "select" },
+  ], data.downloads, { name: "Downloads", sort: 0, desc: true, height: 360, emptyText: "No downloads found.",
+    onSelect: d => showDetail($("download-detail"), [["Saved as", d.targetPath, true], ["From address", d.url, true], ["Page", d.referrer, true],
+      ["Started", d.t ? `${fmt(d.t)} (UTC ${utc(d.t)})` : ""], ["Size", size(d.bytes)], ["Still on disk", onDiskText(d)]]) });
+
+  // Bookmarks, tabs, form entries
+  vtable($("bookmarks"), [
+    { label: "Added", get: b => b.t, text: b => fmt(b.t), csv: b => utc(b.t), width: "11.5rem", descFirst: true },
+    { label: "Title", get: b => b.title, width: "minmax(0,1.3fr)", filter: true },
+    { label: "Address", get: b => b.url, width: "minmax(0,2fr)", filter: true },
+    { label: "Folder", get: b => b.folder, width: "minmax(0,1fr)", filter: "select" },
+    { label: "Browser", get: b => profText(b.p), width: "11rem", filter: "select" },
+  ], data.bookmarks, { name: "Bookmarks", sort: 0, desc: true, height: 300, emptyText: "No bookmarks found." });
+  vtable($("tabs"), [
+    { label: "State", get: t => t.state === "Open" ? "Open" : "Recently closed", width: "9rem", filter: "select" },
+    { label: "Window", get: t => t.window, width: "5rem" },
+    { label: "Title", get: t => t.title, width: "minmax(0,1.3fr)", filter: true },
+    { label: "Address", get: t => t.url, width: "minmax(0,2fr)", filter: true },
+    { label: "Last active", get: t => t.t, text: t => fmt(t.t), csv: t => utc(t.t), width: "11.5rem" },
+    { label: "Browser", get: t => profText(t.p), width: "11rem", filter: "select" },
+  ], data.tabs, { name: "Tabs", height: 300, emptyText: "No open or recently closed tabs found." });
+  $("forms-count").textContent = `(${data.forms.length.toLocaleString()})`;
+  let formsShown = false;
+  $("forms-box").addEventListener("toggle", () => {
+    if (!$("forms-box").open || formsShown) return;
+    formsShown = true;
+    vtable($("forms"), [
+      { label: "Field", get: f => f.field, width: "minmax(0,1fr)", filter: "select" },
+      { label: "Value", get: f => f.value, width: "minmax(0,2fr)", filter: true },
+      { label: "Times used", get: f => f.count, width: "6rem" },
+      { label: "First used", get: f => f.first, text: f => fmt(f.first), csv: f => utc(f.first), width: "11.5rem" },
+      { label: "Last used", get: f => f.last, text: f => fmt(f.last), csv: f => utc(f.last), width: "11.5rem", descFirst: true },
+      { label: "Browser", get: f => profText(f.p), width: "11rem", filter: "select" },
+    ], data.forms, { name: "Form entries", sort: 4, desc: true, height: 300, emptyText: "No form entries found." });
+  });
+
+  ready = true;
+  if (hq) visitTable.setQuery(hq);
+})();
+</script>
+</body>
+</html>
