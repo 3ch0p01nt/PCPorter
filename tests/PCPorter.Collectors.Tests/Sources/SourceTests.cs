@@ -165,6 +165,71 @@ public class OfflineSourceTests : IDisposable
         finally { Directory.Delete(outside, true); }
     }
 
+    static void Junction(string link, string target)
+    {
+        using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, UseShellExecute = false });
+        p!.WaitForExit();
+        Assert.True(Directory.Exists(link));
+    }
+
+    [Fact]
+    public void Links_are_refused_before_their_target_is_opened()
+    {
+        // The target is locked exclusively: if PCPorter opened it, the error would be a sharing violation (IOException).
+        // A link to \\server\share would make Windows connect and send credentials on open, so refusal must come first.
+        var outside = Directory.CreateTempSubdirectory("pcporter-outside").FullName;
+        var link = Path.Combine(_root, "Users");
+        try
+        {
+            var secret = Path.Combine(outside, "secret.txt");
+            File.WriteAllText(secret, "host");
+            Junction(link, outside);
+            using var locked = new FileStream(secret, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using (SourceFiles.Confine(_root))
+            {
+                Assert.Throws<UnauthorizedAccessException>(() => SourceFiles.OpenRead(Path.Combine(link, "secret.txt")));
+                Assert.False(SourceFiles.IsInside(Path.Combine(link, "secret.txt")));
+                Assert.False(SourceFiles.IsInside(@"\\pcporter-nohost.invalid\share\x.txt"));
+                Assert.Throws<UnauthorizedAccessException>(() => SourceFiles.OpenRead(@"\\pcporter-nohost.invalid\share\x.txt"));
+                Assert.Throws<FileNotFoundException>(() => SourceFiles.OpenRead(Path.Combine(_root, "missing.txt")));
+            }
+        }
+        finally { if (Directory.Exists(link)) Directory.Delete(link); Directory.Delete(outside, true); }
+    }
+
+    [Fact]
+    public void Device_path_roots_stay_confined_and_fail_closed()
+    {
+        MiniWindows();
+        var nt = PCPorter.Core.IO.FileIdentity.NtPath(_root);
+        Assert.NotNull(nt);
+        Assert.StartsWith(@"\Device\", nt);
+        var deviceRoot = @"\\?\GLOBALROOT" + nt!.TrimEnd('\\') + "\\";       // the shape a shadow copy root has
+        var outside = Directory.CreateTempSubdirectory("pcporter-outside").FullName;
+        var link = Path.Combine(_root, "Documents and Settings");
+        try
+        {
+            File.WriteAllText(Path.Combine(outside, "host-secret.txt"), "host");
+            Junction(link, outside);
+            using (SourceFiles.Confine(deviceRoot))
+            {
+                using (SourceFiles.OpenRead(deviceRoot + @"Windows\System32\config\SOFTWARE")) { }        // inside: fine
+                Assert.True(SourceFiles.IsInside(deviceRoot + "Windows"));
+                Assert.Throws<UnauthorizedAccessException>(() => SourceFiles.OpenRead(deviceRoot + @"Documents and Settings\host-secret.txt"));
+                Assert.Empty(SourceFiles.Files(deviceRoot + "Documents and Settings"));
+                Assert.False(SourceFiles.IsInside(deviceRoot + @"Windows\..\Documents and Settings"));
+            }
+            // A root that cannot be resolved confines to nothing.
+            using (SourceFiles.Confine(@"\\?\GLOBALROOT\Device\PCPorterNoSuchVolume\"))
+            {
+                Assert.False(SourceFiles.IsInside(@"\\?\GLOBALROOT\Device\PCPorterNoSuchVolume\Windows"));
+                Assert.Throws<UnauthorizedAccessException>(() => SourceFiles.OpenRead(Path.Combine(_root, "Windows", "System32", "config", "SOFTWARE")));
+            }
+        }
+        finally { if (Directory.Exists(link)) Directory.Delete(link); Directory.Delete(outside, true); }
+    }
+
     [Fact]
     public void Sam_and_security_hives_are_refused()
     {

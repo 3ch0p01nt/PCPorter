@@ -1,3 +1,5 @@
+using PCPorter.Core.IO;
+
 namespace PCPorter.Collectors.Sources;
 
 /// <param name="ProfilePath">Readable path here (mapped onto the source); null if unavailable.</param>
@@ -159,13 +161,24 @@ public static class SourcePaths
 }
 
 /// <summary>
-/// Opens and enumerates files strictly inside a source's read root. Inside <see cref="Confine"/>, every open and every
-/// folder listing is checked against its REAL location, so a link on an old drive (e.g. "Documents and Settings" ->
-/// C:\Users) can never lead into the files of the PC running PCPorter.
+/// Opens and enumerates files strictly inside a source's read root. Inside <see cref="Confine"/>, a path is used only
+/// when it is under the root, no folder or file on the way is a junction/symlink/mount point (checked WITHOUT following
+/// it, so a link to \\server\share never makes Windows connect and send the account's credentials), and its real
+/// NT location is inside the root's. Anything that cannot be resolved counts as outside (fail closed). So a link on an
+/// old drive (e.g. "Documents and Settings" -> C:\Users) can never lead into the files of the PC running PCPorter.
 /// </summary>
 public static class SourceFiles
 {
-    static readonly AsyncLocal<string?> ConfinedRoot = new();
+    sealed class Confinement(string root, string? ntRoot)
+    {
+        public readonly string Root = root;               // as the caller names it, ending in \
+        public readonly string? NtRoot = ntRoot;          // \Device\...\ ending in \; null = could not be resolved
+        public readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> Folders = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    enum Verdict { Inside, Outside, Missing }
+
+    static readonly AsyncLocal<Confinement?> ConfinedRoot = new();
 
     public static readonly EnumerationOptions Options = new()
     {
@@ -175,11 +188,55 @@ public static class SourceFiles
     /// <summary>Confines file access in this async flow to <paramref name="readRoot"/> until disposed.</summary>
     public static IDisposable Confine(string readRoot)
     {
-        var final = FileIdentity.FinalPath(readRoot) ?? readRoot;
+        var root = readRoot.EndsWith('\\') ? readRoot : readRoot + "\\";
+        var nt = FileIdentity.NtPath(root);
         var previous = ConfinedRoot.Value;
-        ConfinedRoot.Value = final.EndsWith('\\') ? final : final + "\\";
+        ConfinedRoot.Value = new Confinement(root, nt is null ? null : nt.EndsWith('\\') ? nt : nt + "\\");
         return new Scope(() => ConfinedRoot.Value = previous);
     }
+
+    static Verdict Check(Confinement c, string path)
+    {
+        string full;
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal))
+        {
+            if (path.Split('\\').Skip(4).Any(s => s is "." or "..")) return Verdict.Outside;   // device paths are not normalised
+            full = path;
+        }
+        else
+        {
+            if (path.StartsWith(@"\\", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal)) return Verdict.Outside;   // never touch the network
+            try { full = Path.GetFullPath(path); }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { return Verdict.Outside; }
+        }
+
+        bool isRoot = Path.TrimEndingDirectorySeparator(full).Equals(Path.TrimEndingDirectorySeparator(c.Root), StringComparison.OrdinalIgnoreCase);
+        if (!isRoot && !full.StartsWith(c.Root, StringComparison.OrdinalIgnoreCase)) return Verdict.Outside;
+        if (c.NtRoot is null) return isRoot ? Verdict.Inside : Verdict.Outside;
+        if (isRoot) return Verdict.Inside;
+
+        // Walk down from the root, opening each entry itself (links not followed).
+        var parts = full[c.Root.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries);
+        var current = c.Root;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            current += (i == 0 ? "" : "\\") + parts[i];
+            bool last = i == parts.Length - 1;
+            if (!last && c.Folders.TryGetValue(current, out var ok)) { if (!ok) return Verdict.Outside; continue; }
+            var entry = FileIdentity.Entry(current);
+            if (entry is null) return Verdict.Missing;
+            if (!last) c.Folders[current] = !entry.Value.IsLink;
+            if (entry.Value.IsLink) return Verdict.Outside;
+        }
+
+        // No link on the way; the real location must still be inside (fail closed if it cannot be resolved).
+        var nt = FileIdentity.NtPath(full);
+        if (nt is null) return Verdict.Outside;
+        return InsideNt(nt, c.NtRoot) ? Verdict.Inside : Verdict.Outside;
+    }
+
+    static bool InsideNt(string nt, string ntRoot) =>
+        (nt.EndsWith('\\') ? nt : nt + "\\").StartsWith(ntRoot, StringComparison.OrdinalIgnoreCase);
 
     static readonly AsyncLocal<Action<string, string>?> Observer = new();
 
@@ -194,44 +251,50 @@ public static class SourceFiles
         return new Scope(() => Observer.Value = previous);
     }
 
-    /// <summary>True when the path's real location is inside the confined root (or no confinement is active).</summary>
-    public static bool IsInside(string path)
-    {
-        var root = ConfinedRoot.Value;
-        if (root is null) return true;
-        var final = FileIdentity.FinalPath(path);
-        if (final is null) return true;                     // does not exist: nothing to read anyway
-        var f = final.EndsWith('\\') ? final : final + "\\";
-        return f.StartsWith(root, StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>
+    /// True when the path exists, is inside the confined root and reaches it through no link (or no confinement is
+    /// active). A path that does not exist, or whose real location cannot be resolved, is not inside.
+    /// </summary>
+    public static bool IsInside(string path) => ConfinedRoot.Value is not { } c || Check(c, path) == Verdict.Inside;
 
     public static IEnumerable<string> Files(string folder, string pattern = "*", bool recursive = false)
     {
         Observer.Value?.Invoke("list", folder);
         var opts = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint, RecurseSubdirectories = recursive };
-        try { return Directory.Exists(folder) && IsInside(folder) ? Directory.EnumerateFiles(folder, pattern, opts).ToList() : []; }
+        try { return IsInside(folder) && Directory.Exists(folder) ? Directory.EnumerateFiles(folder, pattern, opts).ToList() : []; }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
     }
 
     public static IEnumerable<string> Folders(string folder)
     {
         Observer.Value?.Invoke("list", folder);
-        try { return Directory.Exists(folder) && IsInside(folder) ? Directory.EnumerateDirectories(folder, "*", Options).ToList() : []; }
+        try { return IsInside(folder) && Directory.Exists(folder) ? Directory.EnumerateDirectories(folder, "*", Options).ToList() : []; }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
     }
 
+    /// <summary>Opens a file for reading. Inside <see cref="Confine"/>, links and anything outside the root are refused BEFORE opening.</summary>
+    /// <exception cref="UnauthorizedAccessException">The path leads outside the drive being scanned.</exception>
+    /// <exception cref="FileNotFoundException">The path does not exist.</exception>
     public static FileStream OpenRead(string path)
     {
         Observer.Value?.Invoke("read", path);
+        var c = ConfinedRoot.Value;
+        if (c is not null)
+        {
+            var verdict = Check(c, path);
+            if (verdict == Verdict.Missing) throw new FileNotFoundException($"{Path.GetFileName(path)} was not found.", path);
+            if (verdict == Verdict.Outside) throw Outside(path);
+        }
         var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        if (ConfinedRoot.Value is { } root && FileIdentity.FinalPath(fs.SafeFileHandle) is { } final
-            && !final.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        if (c is not null && (c.NtRoot is null || FileIdentity.NtPath(fs.SafeFileHandle) is not { } nt || !InsideNt(nt, c.NtRoot)))
         {
             fs.Dispose();
-            throw new UnauthorizedAccessException($"{path} leads outside the drive being scanned; it was not read.");
+            throw Outside(path);
         }
         return fs;
     }
+
+    static UnauthorizedAccessException Outside(string path) => new($"{path} leads outside the drive being scanned; it was not read.");
 
     /// <summary>Reads a whole (small) file from the scanned drive. Files over <paramref name="maxBytes"/> are refused.</summary>
     public static byte[] ReadAllBytes(string path, long maxBytes = 64L << 20)
