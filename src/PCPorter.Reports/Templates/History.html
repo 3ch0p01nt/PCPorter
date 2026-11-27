@@ -349,7 +349,7 @@
   ], data.tabs, { name: "Tabs", height: 300, emptyText: "No open or recently closed tabs found." });
   $("forms-count").textContent = `(${data.forms.length.toLocaleString()})`;
   let formsShown = false;
-  $("forms-box").addEventListener("toggle", () => {
+  const showForms = () => {
     if (!$("forms-box").open || formsShown) return;
     formsShown = true;
     vtable($("forms"), [
@@ -360,7 +360,9 @@
       { label: "Last used", get: f => f.last, text: f => fmt(f.last), csv: f => utc(f.last), width: "11.5rem", descFirst: true },
       { label: "Browser", get: f => profText(f.p), width: "11rem", filter: "select" },
     ], data.forms, { name: "Form entries", sort: 4, desc: true, height: 300, emptyText: "No form entries found." });
-  });
+  };
+  $("forms-box").addEventListener("toggle", showForms);
+  showForms();                                            // already open (e.g. the browser restored the page): build now
 
   ready = true;
   if (hq) visitTable.setQuery(hq);

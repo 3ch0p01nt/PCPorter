@@ -56,7 +56,7 @@ public class HistoryReportTests
         var m = Regex.Match(html, "<details[^>]*id=\"forms-box\"[^>]*>");
         Assert.True(m.Success);
         Assert.DoesNotContain(" open", m.Value);
-        Assert.Contains("addEventListener(\"toggle\"", html);                   // the table is built only when opened
+        Assert.Contains("addEventListener(\"toggle\", showForms)", html);        // the table is built only when opened
     }
 
     static JsonDocument EmbeddedData(string html)
