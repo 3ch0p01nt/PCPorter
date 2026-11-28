@@ -67,6 +67,10 @@ public static partial class ScanJob
         Action<ScanJobResult, CollectorContext>? writeReport = null)
     {
         var started = DateTimeOffset.UtcNow;
+        // The same rule for the app and the CLI: never write the case onto the drive being checked (by volume
+        // identity, so a subst letter or mount point of that drive is refused too). Checked before anything is opened.
+        var location = CaseLocation.Check(outRoot, options.OfflineRoot);
+        if (!location.IsAllowed) throw new CaseLocationRejectedException(location.Reason!);
         using ISystemSource source = options.OfflineRoot is null ? new LiveSource() : new OfflineSource(options.OfflineRoot);
         using var confine = SourceFiles.Confine(source.ReadRoot);
 

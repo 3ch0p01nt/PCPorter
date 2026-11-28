@@ -59,6 +59,16 @@ public class ScanJobTests : IDisposable
         finally { Directory.Delete(empty, true); }
     }
 
+    [Fact]
+    public void Saving_inside_the_scanned_drive_is_refused_before_anything_is_written()
+    {
+        using var drive = PCPorter.TestKit.OldPcDrive.Create();
+        var inside = Path.Combine(drive.Root, "Cases");
+        var ex = Assert.Throws<CaseLocationRejectedException>(() => ScanJob.Run(inside, new ScanJobOptions(OfflineRoot: drive.Root), _ => []));
+        Assert.Contains("drive being checked", ex.Message);
+        Assert.False(Directory.Exists(inside));
+    }
+
     static ScanJobResult Result(bool offline, params CollectorStatus[] statuses) =>
         new("case", "id", new ScanRunResult(statuses.Select((s, i) => new CollectorRun($"c{i}", s, 0, 0, null, null)).ToList()), [], [], null, "", null, offline);
 
