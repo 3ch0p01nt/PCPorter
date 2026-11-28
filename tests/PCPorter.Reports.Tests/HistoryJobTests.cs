@@ -454,11 +454,36 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Contains(r2.Scan.Notes, n => n.Contains("Internet Explorer / legacy Edge history could not be read"));
     }
 
+    [Fact]
+    public void One_internet_explorer_profile_that_fails_unexpectedly_is_a_warning_and_the_others_are_read()
+    {
+        var shadow = Path.Combine(_out, "shadow");
+        IeCache(shadow);                                                   // bob's cache
+        WebCacheFixture.Create(Path.Combine(shadow, @"Users\carol", WebCacheRel),
+            new WebCacheFixture.Container(1, "History", [new WebCacheFixture.Entry("Visited: carol@https://carol.example/", T0)]));
+        foreach (var who in new[] { "bob", "carol" })
+        {
+            Directory.CreateDirectory(Path.Combine(_drive, "Users", who, WebCacheRel));
+            File.WriteAllBytes(Path.Combine(_drive, "Users", who, WebCacheRel, "WebCacheV01.dat"), [0]);
+        }
+        var carol = new UserProfile("S-1-5-21-1-2-3-1002", "carol", Path.Combine(_drive, "Users", "carol"), null, @"C:\Users\carol");
+        var snapshots = new FakeSnapshots(_drive, shadow) { FailFor = "carol" };     // e.g. an error Windows was not expected to give
+        using var source = new FakeSystemSource(_drive, users: [Bob, carol], live: true);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(AllUsers: true, RestorePoints: false, Elevated: true, Snapshots: snapshots), now: Now);
+
+        Assert.Equal(2, r.Scan.Visits.Count(v => v.Profile.User == "bob"));
+        Assert.Contains(r.Scan.Warnings, w => w.Contains("carol") && w.Contains("could not be read"));
+        Assert.Contains(r.Scan.Coverage, c => c.Profile.User == "carol" && c.Visits == 0);
+        Assert.Equal((1, 1), (snapshots.Created, snapshots.Disposed));
+    }
+
     /// <summary>A shadow copy provider whose "snapshot" maps the live drive folder onto another folder.</summary>
     sealed class FakeSnapshots(string liveRoot, string shadowRoot) : PCPorter.Core.Snapshots.ISnapshotProvider
     {
         public int Created, Disposed;
         public bool Fail;
+        public string? FailFor;
 
         public PCPorter.Core.Snapshots.ISnapshot Create(string volumeRoot)
         {
@@ -470,7 +495,9 @@ public sealed class HistoryJobTests : IDisposable
         sealed class Snap(FakeSnapshots owner, string liveRoot, string shadowRoot) : PCPorter.Core.Snapshots.ISnapshot
         {
             public string DeviceRoot => shadowRoot;
-            public string Map(string livePath) => livePath.StartsWith(liveRoot, StringComparison.OrdinalIgnoreCase)
+            public string Map(string livePath) =>
+                owner.FailFor is { } who && livePath.Contains(who, StringComparison.OrdinalIgnoreCase) ? throw new NotSupportedException("The path is in an unexpected form.")
+                : livePath.StartsWith(liveRoot, StringComparison.OrdinalIgnoreCase)
                 ? shadowRoot + livePath[liveRoot.Length..]
                 : throw new ArgumentException($"{livePath} is not on the snapshot volume.");
             public void Dispose() => owner.Disposed++;

@@ -71,6 +71,16 @@ public static class HistoryJob
                 liveVisits.Count == 0 ? null : liveVisits.Min(v => v.When), liveVisits.Count == 0 ? null : liveVisits.Max(v => v.When), retention));
         }
 
+        // One profile that cannot be read is a warning; the others are still read.
+        void Failed(BrowserProfile profile, Exception ex)
+        {
+            profiles.Add(profile);
+            if (profile.Family != BrowserFamily.WebCache) liveKeys[profile] = null;
+            var name = profile.Family == BrowserFamily.WebCache ? profile.Browser : $"{profile.Browser} ({profile.Name})";
+            warnings.Add($"{name} for {profile.User} could not be read: {FirstLine(ex.Message)}");
+            coverage.Add(new ProfileCoverage(profile, 0, null, null, "Could not be read; see the processing notes."));
+        }
+
         try
         {
             using (SourceFiles.Confine(source.ReadRoot))
@@ -92,17 +102,15 @@ public static class HistoryJob
                                 : ChromiumHistoryReader.Read(profile, work, onDisk, ct);
                             Absorb(profile, h, profile.Family == BrowserFamily.Firefox ? FirefoxRetention : ChromiumRetention);
                         }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            profiles.Add(profile);
-                            liveKeys[profile] = null;
-                            warnings.Add($"{profile.Browser} ({profile.Name}) for {user.UserName} could not be read: {FirstLine(ex.Message)}");
-                            coverage.Add(new ProfileCoverage(profile, 0, null, null, "Could not be read; see the processing notes."));
-                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException) { Failed(profile, ex); }
                     }
                 }
                 if (webCaches.Count > 0)
-                    ReadWebCaches(source, options, webCaches, work, onDisk, notes, progress, ct, (p, h) => Absorb(p, h, WebCacheRetention));
+                    ReadWebCaches(source, options, webCaches, work, onDisk, notes, progress, ct, (p, read) =>
+                    {
+                        try { if (read() is { } h) Absorb(p, h, WebCacheRetention); }    // null: not read, a note says why
+                        catch (Exception ex) when (ex is not OperationCanceledException) { Failed(p, ex); }
+                    });
 
                 if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && users.Count > 0)
                 {
@@ -218,17 +226,19 @@ public static class HistoryJob
     /// <summary>
     /// Internet Explorer / legacy Edge history (WebCacheV01.dat). Offline: read straight from the drive. Live: Windows keeps
     /// the file locked, so it is read only as administrator, from a temporary shadow copy of C: that PCPorter makes and
-    /// always removes again; otherwise a note says why it was left out.
+    /// always removes again; otherwise a note says why it was left out. <paramref name="absorb"/> runs one profile's read and
+    /// keeps a failure to that profile (a warning); the read returns null when the profile was skipped with a note.
     /// </summary>
     static void ReadWebCaches(ISystemSource source, HistoryJobOptions options, List<BrowserProfile> caches, string work,
-        Func<string, bool?> onDisk, List<string> notes, IProgress<string>? progress, CancellationToken ct, Action<BrowserProfile, ProfileHistory> absorb)
+        Func<string, bool?> onDisk, List<string> notes, IProgress<string>? progress, CancellationToken ct, Action<BrowserProfile, Func<ProfileHistory?>> absorb)
     {
         if (!source.IsLive)
         {
             foreach (var p in caches)
             {
+                ct.ThrowIfCancellationRequested();
                 progress?.Report($"{p.User}: {p.Browser}");
-                absorb(p, WebCacheReader.Read(p, work, onDisk, ct));
+                absorb(p, () => WebCacheReader.Read(p, work, onDisk, ct));
             }
             return;
         }
@@ -248,14 +258,17 @@ public static class HistoryJob
                 {
                     ct.ThrowIfCancellationRequested();
                     progress?.Report($"{p.User}: {p.Browser}");
-                    string inSnapshot;
-                    try { inSnapshot = snap.Map(p.Folder); }
-                    catch (ArgumentException)
+                    absorb(p, () =>
                     {
-                        notes.Add($"{p.Browser} history for {p.User} is not on C:, so it was not read.");
-                        continue;
-                    }
-                    absorb(p, WebCacheReader.Read(p, work, OnTheLiveDrive, ct, inSnapshot));
+                        string inSnapshot;
+                        try { inSnapshot = snap.Map(p.Folder); }
+                        catch (ArgumentException)
+                        {
+                            notes.Add($"{p.Browser} history for {p.User} is not on C:, so it was not read.");
+                            return null;
+                        }
+                        return WebCacheReader.Read(p, work, OnTheLiveDrive, ct, inSnapshot);
+                    });
                 }
         }
         catch (Exception e) when (e is InvalidOperationException or UnauthorizedAccessException or System.Management.ManagementException or IOException
