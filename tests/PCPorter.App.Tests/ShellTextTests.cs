@@ -1,4 +1,5 @@
 using PCPorter.App.Views;
+using PCPorter.Collectors.Offline;
 
 namespace PCPorter.App.Tests;
 
@@ -17,6 +18,46 @@ public class ShellTextTests
         Assert.Equal("Start PCPorter as administrator to look inside other drives.", WindowsDrives.Hint([], elevated: false));
         Assert.StartsWith("No other Windows drive found.", WindowsDrives.Hint([], elevated: true));
     }
+
+    static readonly VolumeSafetyReport Clean = new(false, false, null);
+
+    [Fact]
+    public void Drive_picker_shows_the_OS_name_locked_and_not_ready_drives_and_warns_about_unclean_drives()
+    {
+        var scan = new OfflineVolumeScan(
+        [
+            new OfflineVolume(@"D:\", null, OfflineVolumeState.WindowsFound, "Windows 11 Pro", "22631", "Windows 11 Pro (build 22631)"),
+            new OfflineVolume(@"E:\", null, OfflineVolumeState.WindowsFound, "Windows 10 Home", "19045", "Windows 10 Home (build 19045)"),
+            new OfflineVolume(@"F:\", "{vol}", OfflineVolumeState.Locked, null, null, OfflineVolumeFinder.LockedDescription),
+            new OfflineVolume(null, "{vol2}", OfflineVolumeState.Locked, null, null, OfflineVolumeFinder.LockedDescription),
+        ], []);
+        var choices = WindowsDrives.Choices(scan, notReady: [@"F:\", @"G:\"], unreadable: [@"H:\"],
+            root => root == @"E:\" ? new VolumeSafetyReport(Hibernated: true, Dirty: null, null) : Clean);
+
+        Assert.Equal([@"D:\ Windows 11 Pro (build 22631)", @"E:\ Windows 10 Home (build 19045)", @"F:\ (locked or not ready)",
+                      "A drive without a letter (locked or not ready)", @"G:\ (locked or not ready)", @"H:\ (can't be read)"],
+            choices.Select(c => c.Label));
+        Assert.Equal([true, true, false, false, false, false], choices.Select(c => c.Usable));
+        Assert.Null(choices[0].Warning);
+        Assert.Equal("This drive was not shut down cleanly (Fast Startup or a crash). PCPorter only reads it, but some recent changes may be missing.",
+            choices[1].Warning);
+
+        // The picked drive's warning comes first, then what to do about the locked drive.
+        var hint = WindowsDrives.Hint(choices, elevated: true, picked: choices[1]);
+        Assert.StartsWith(choices[1].Warning!, hint);
+        Assert.Contains("BitLocker", hint);
+        Assert.DoesNotContain("shut down", WindowsDrives.Hint(choices, elevated: true, picked: choices[0]));
+    }
+
+    [Fact]
+    public void The_live_Windows_drive_finder_never_lists_the_running_Windows() =>
+        Assert.DoesNotContain(WindowsDrives.Find(), d => string.Equals(d.Root, WindowsDrives.SystemRoot, StringComparison.OrdinalIgnoreCase));
+
+    [Fact]
+    public void Dirty_drive_gets_the_same_warning() =>
+        Assert.NotNull(WindowsDrives.Choices(
+            new OfflineVolumeScan([new OfflineVolume(@"D:\", null, OfflineVolumeState.WindowsFound, null, null, "Windows found")], []),
+            [], [], _ => new VolumeSafetyReport(false, true, null)).Single().Warning);
 
     static SaveDrive Drive(string root, long freeGb = 100, bool usb = false, bool removable = false, bool windows = false, string? label = null) =>
         new(root, label, freeGb * 1024L * 1024 * 1024, usb, removable, windows);

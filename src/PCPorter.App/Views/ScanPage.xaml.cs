@@ -47,6 +47,7 @@ public partial class ScanPage : Page
         _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, _memory.SaveFolder);
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
         ShowLastRun();
+        Drives.SelectionChanged += (_, _) => UpdateDriveHint();
         Loaded += async (_, _) =>
         {
             if (_seen) return;
@@ -78,7 +79,13 @@ public partial class ScanPage : Page
         var candidates = await Task.Run(WindowsDrives.Find);
         Drives.ItemsSource = candidates;
         Drives.SelectedItem = candidates.FirstOrDefault(c => c.Usable);
-        DriveHint.Text = WindowsDrives.Hint(candidates, _elevated);
+        UpdateDriveHint();
+    }
+
+    /// <summary>What was found, with the picked drive's warning (not shut down cleanly) first.</summary>
+    void UpdateDriveHint()
+    {
+        if (Drives.ItemsSource is List<DriveChoice> found) DriveHint.Text = WindowsDrives.Hint(found, _elevated, Drives.SelectedItem as DriveChoice);
     }
 
     async void RefreshDrives_Click(object sender, RoutedEventArgs e) => await RefreshDrives();

@@ -4,12 +4,15 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using PCPorter.Collectors.Offline;
+using PCPorter.Collectors.Sources;
 using PCPorter.Core.IO;
 
 namespace PCPorter.App.Views;
 
 /// <summary>A drive in the "another PC's drive" picker. Locked (BitLocker) drives are listed but can't be picked until unlocked.</summary>
-public sealed record DriveChoice(string Root, string Label, bool Usable)
+/// <param name="Warning">Shown under the picker while this drive is picked (for example: not shut down cleanly).</param>
+public sealed record DriveChoice(string Root, string Label, bool Usable, string? Warning = null)
 {
     public override string ToString() => Label;
 }
@@ -17,38 +20,82 @@ public sealed record DriveChoice(string Root, string Label, bool Usable)
 /// <summary>Finds connected drives that hold another PC's Windows (shared by the Health and security and Web history pages).</summary>
 public static class WindowsDrives
 {
-    /// <summary>Every fixed or removable drive other than the running Windows that has a SOFTWARE hive. Slow for a sleeping USB disk: call off the UI thread.</summary>
+    public const string LockedSuffix = " (locked or not ready)";
+
+    /// <summary>
+    /// Every fixed or removable drive other than the running Windows that holds a Windows (<see cref="OfflineVolumeFinder"/>:
+    /// OS name, BitLocker-locked drives, never following a link), each checked by <see cref="VolumeSafety"/>. Drives that
+    /// are not ready (locked without administrator rights to ask BitLocker) are listed but can't be picked. Slow for a
+    /// sleeping USB disk and asks WMI: call off the UI thread.
+    /// </summary>
     public static List<DriveChoice> Find()
     {
-        var running = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-        var list = new List<DriveChoice>();
-        foreach (var d in DriveInfo.GetDrives())
+        var running = SystemRoot;
+        var ready = new List<string>();
+        var notReady = new List<string>();
+        var unreadable = new List<string>();
+        DriveInfo[] drives;
+        try { drives = DriveInfo.GetDrives(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
+        foreach (var d in drives)
         {
-            var root = d.RootDirectory.FullName;
-            if (string.Equals(root, running, StringComparison.OrdinalIgnoreCase) || d.DriveType is not (DriveType.Fixed or DriveType.Removable)) continue;
+            string root;
             try
             {
-                if (!d.IsReady) { list.Add(new(root, $"{root} (locked or not ready)", false)); continue; }
-                if (File.Exists(Path.Combine(root, "Windows", "System32", "config", "SOFTWARE")))
-                    list.Add(new(root, string.IsNullOrWhiteSpace(d.VolumeLabel) ? root : $"{root} ({d.VolumeLabel})", true));
+                if (d.DriveType is not (DriveType.Fixed or DriveType.Removable)) continue;
+                root = d.RootDirectory.FullName;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { list.Add(new(root, $"{root} (can't be read)", false)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { continue; }
+            if (string.Equals(root, running, StringComparison.OrdinalIgnoreCase)) continue;
+            try { (d.IsReady ? ready : notReady).Add(root); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { unreadable.Add(root); }
         }
+        var scan = new OfflineVolumeFinder(new WmiClient(), () => ready, runningWindowsDrive: running).Find();
+        // Only the two checks the picker shows (the change-journal position is for a scan's before/after comparison).
+        return Choices(scan, notReady, unreadable, root => new VolumeSafetyReport(VolumeSafety.IsHibernated(root), VolumeSafety.IsDirty(root), null));
+    }
+
+    /// <summary>
+    /// The picker's entries: drives with Windows (usable; OS name; <see cref="VolumeSafetyReport.Warning"/> when hibernated
+    /// or dirty), then locked drives and drives that are not ready (listed, not usable), then drives that can't be read.
+    /// </summary>
+    public static List<DriveChoice> Choices(OfflineVolumeScan scan, IEnumerable<string> notReady, IEnumerable<string> unreadable,
+        Func<string, VolumeSafetyReport> safety)
+    {
+        var list = new List<DriveChoice>();
+        foreach (var v in scan.Volumes.Where(v => v.State == OfflineVolumeState.WindowsFound && v.Root is not null))
+        {
+            list.Add(new(v.Root!, $"{v.Root} {v.Description}", true, safety(v.Root!).Warning));
+        }
+        var listed = new HashSet<string>(list.Select(c => c.Root), StringComparer.OrdinalIgnoreCase);
+        foreach (var v in scan.Volumes.Where(v => v.State == OfflineVolumeState.Locked))
+        {
+            if (v.Root is { } root) { if (listed.Add(root)) list.Add(new(root, root + LockedSuffix, false)); }
+            else list.Add(new("", "A drive without a letter" + LockedSuffix, false));
+        }
+        foreach (var root in notReady)
+            if (listed.Add(root)) list.Add(new(root, root + LockedSuffix, false));
+        foreach (var root in unreadable)
+            if (listed.Add(root)) list.Add(new(root, $"{root} (can't be read)", false));
         return list;
     }
 
     /// <summary>
     /// The line under the picker: what was found and what to do next. Without administrator rights Windows hides another
-    /// drive's system folder, so "nothing found" would be wrong: say how to look instead.
+    /// drive's system folder, so "nothing found" would be wrong: say how to look instead. The picked drive's warning
+    /// (not shut down cleanly) comes first.
     /// </summary>
-    public static string Hint(IReadOnlyCollection<DriveChoice> found, bool elevated) =>
-        found.Count == 0
+    public static string Hint(IReadOnlyCollection<DriveChoice> found, bool elevated, DriveChoice? picked = null)
+    {
+        var hint = found.Count == 0
             ? elevated
                 ? "No other Windows drive found. Connect the old PC's drive (for example with a USB adapter) and press Refresh."
                 : "Start PCPorter as administrator to look inside other drives."
             : found.Any(c => !c.Usable)
                 ? "A locked drive was found. Unlock it in File Explorer with its BitLocker recovery key (aka.ms/myrecoverykey), then press Refresh."
                 : "";
+        return picked?.Warning is { } warning ? (hint.Length > 0 ? warning + " " + hint : warning) : hint;
+    }
 
     /// <summary>A local folder outside any synced location: shown at once, until the backup drive is found.</summary>
     public const string DefaultSaveFolder = @"C:\PCPorterCases";
