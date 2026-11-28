@@ -6,9 +6,10 @@
   <StackPanel Margin="32">
     <TextBlock Text="What would you like to do?" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,24" />
     <UniformGrid Columns="3">
-      <ui:CardAction Margin="0,0,12,0" Icon="{ui:SymbolIcon ArrowSwap24}" AutomationProperties.Name="Move to my new PC" Click="Move_Click">
+      <ui:CardAction Margin="0,0,12,0" Icon="{ui:SymbolIcon ArrowSwap24}" AutomationProperties.Name="Move to my new PC (coming soon)" Click="Move_Click">
         <StackPanel>
           <TextBlock Text="Move to my new PC" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Coming soon" FontWeight="SemiBold" Opacity="0.8" Margin="0,2,0,0" />
           <TextBlock Text="Back up this PC, or restore a backup onto a new one, without bringing viruses along."
                      TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
         </StackPanel>
@@ -23,7 +24,7 @@
       <ui:CardAction Margin="12,0,0,0" Icon="{ui:SymbolIcon ShieldCheckmark24}" AutomationProperties.Name="Check health and security" Click="Health_Click">
         <StackPanel>
           <TextBlock Text="Check health and security" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="Antivirus, startup programs, disk and battery health, and a readiness score."
+          <TextBlock Text="Antivirus, startup programs, security settings, installed apps, and disk and battery health."
                      TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
         </StackPanel>
       </ui:CardAction>

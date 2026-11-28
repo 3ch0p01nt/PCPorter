@@ -78,7 +78,7 @@ public partial class ScanPage : Page
         var candidates = await Task.Run(WindowsDrives.Find);
         Drives.ItemsSource = candidates;
         Drives.SelectedItem = candidates.FirstOrDefault(c => c.Usable);
-        DriveHint.Text = WindowsDrives.Hint(candidates);
+        DriveHint.Text = WindowsDrives.Hint(candidates, _elevated);
     }
 
     async void RefreshDrives_Click(object sender, RoutedEventArgs e) => await RefreshDrives();
