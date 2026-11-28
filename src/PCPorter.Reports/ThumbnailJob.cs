@@ -56,14 +56,19 @@ public static class ThumbnailJob
         ThumbnailJobResult Collect()
         {
         resolver ??= options.ResolverFactory?.Invoke(work) ?? new NoPathResolver();
-        sources ??= ThumbnailCollector.LiveSources(options.AllUsers);
+        IReadOnlyList<string> skippedAccounts = [];
+        if (sources is null)
+        {
+            var found = ThumbnailCollector.FindLiveSources(options.AllUsers);
+            (sources, skippedAccounts) = (found.Sources, found.Skipped);
+        }
         var allSources = options.AdditionalSources is null ? sources : sources.Concat(options.AdditionalSources(sources)).ToList();
         var store = new ImageStore(imagesFolder);   // one store for every source: the same picture is saved once
         var scan = new ThumbnailCollector(resolver).Collect(allSources, store, progress, ct);
 
         // Other image sources (browser caches, screenshots, recently opened files) go into the same gallery.
         var items = scan.Items.ToList();
-        var warnings = scan.Warnings.ToList();
+        var warnings = skippedAccounts.Concat(scan.Warnings).ToList();
         var notes = scan.Notes.Concat(options.ExtraNotes ?? []).ToList();
         if (options.ExtraSources is { Count: > 0 })
         {

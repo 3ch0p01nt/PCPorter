@@ -167,6 +167,38 @@ public class ThumbnailCollectorTests : IDisposable
         Assert.Equal(["alice", "bob"], all.Select(s => s.User).Order());
     }
 
+    static void Junction(string link, string target)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe") { CreateNoWindow = true, UseShellExecute = false };
+        foreach (var a in new[] { "/c", "mklink", "/J", link, target }) psi.ArgumentList.Add(a);
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        p.WaitForExit();
+        Assert.True(Directory.Exists(link), "mklink /J failed");
+    }
+
+    [Fact]
+    public void All_users_warns_for_each_account_skipped_and_why()
+    {
+        Explorer("alice", ("thumbcache_96.db", []));
+        Explorer("bob", ("thumbcache_96.db", []));
+        var users = Path.Combine(_root, "Users");
+        Directory.CreateDirectory(Path.Combine(users, "carol"));                  // never used Explorer
+        Directory.CreateDirectory(Path.Combine(users, "Public"));                 // not an account: silent
+        Directory.CreateDirectory(Path.Combine(users, "Default"));
+        var elsewhere = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
+        var dave = Path.Combine(users, "dave");
+        Junction(dave, elsewhere);
+        try
+        {
+            var found = ThumbnailCollector.FindLiveSources(allUsers: true, usersRoot: users, currentProfile: Path.Combine(users, "bob"));
+            Assert.Equal(["alice", "bob"], found.Sources.Select(s => s.User).Order());
+            Assert.Equal(2, found.Skipped.Count);
+            Assert.Contains(found.Skipped, w => w.Contains("carol") && w.Contains("no File Explorer"));
+            Assert.Contains(found.Skipped, w => w.Contains("dave") && w.Contains("link"));
+        }
+        finally { Directory.Delete(dave); }
+    }
+
     [Fact]
     public void Chained_resolver_only_asks_later_resolvers_for_missing_ids()
     {

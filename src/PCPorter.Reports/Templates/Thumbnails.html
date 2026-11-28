@@ -209,8 +209,8 @@
   const dupSize = {}; items.forEach(i => { if (i.dup != null) dupSize[i.dup] = (dupSize[i.dup] || 0) + 1; });
 
   // Header, theme
-  $("meta").textContent = `${data.meta.computer} - generated ${fmt(data.meta.generatedUtc)} - PCPorter ${data.meta.toolVersion}`;
-  $("print-head").textContent = `PCPorter - images viewed on ${data.meta.computer} - generated ${fmt(data.meta.generatedUtc)}`;
+  $("meta").textContent = `${data.meta.computer} - generated ${fmt(data.meta.generatedUtc)} - PCPorter ${data.meta.toolVersion} - accounts: ${(data.meta.users || []).join(", ") || "none"}`;
+  $("print-head").textContent = `PCPorter - images viewed on ${data.meta.computer} - generated ${fmt(data.meta.generatedUtc)} - accounts: ${(data.meta.users || []).join(", ") || "none"}`;
   const applyTheme = t => { const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches); document.documentElement.dataset.theme = dark ? "dark" : "light"; };
   const theme = store.get("pcporter-theme", "system"); $("theme").value = theme; applyTheme(theme);
   $("theme").onchange = () => { store.set("pcporter-theme", $("theme").value); applyTheme($("theme").value); };

@@ -220,28 +220,55 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
     /// Thumbnail folders to read on this running PC. By default only the person running PCPorter;
     /// <paramref name="allUsers"/> adds every other profile (needs admin, and their consent).
     /// </summary>
-    public static IReadOnlyList<ThumbnailSource> LiveSources(bool allUsers = false, string? usersRoot = null, string? currentProfile = null)
+    public static IReadOnlyList<ThumbnailSource> LiveSources(bool allUsers = false, string? usersRoot = null, string? currentProfile = null) =>
+        FindLiveSources(allUsers, usersRoot, currentProfile).Sources;
+
+    /// <summary>The thumbnail folders found, and one plain-words line for each account that was skipped and why.</summary>
+    public sealed record LiveSourceSearch(IReadOnlyList<ThumbnailSource> Sources, IReadOnlyList<string> Skipped);
+
+    /// <summary>Folders in C:\Users that are not accounts (templates and shared folders): never reported as skipped.</summary>
+    static readonly HashSet<string> NotAccounts = new(StringComparer.OrdinalIgnoreCase) { "Public", "Default", "Default User", "All Users", "defaultuser0", "WDAGUtilityAccount" };
+
+    public static LiveSourceSearch FindLiveSources(bool allUsers = false, string? usersRoot = null, string? currentProfile = null)
     {
         currentProfile ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var list = new List<ThumbnailSource>();
-        IEnumerable<string> profiles = allUsers ? SafeDirs(usersRoot ?? Path.GetDirectoryName(currentProfile)!) : [currentProfile];
+        var skipped = new List<string>();
+        IEnumerable<string> profiles = [currentProfile];
+        if (allUsers)
+        {
+            var root = usersRoot ?? Path.GetDirectoryName(currentProfile)!;
+            try { profiles = Directory.EnumerateDirectories(root, "*", new EnumerationOptions { AttributesToSkip = 0 }).ToList(); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                skipped.Add($"Could not list the user accounts ({ex.Message}); only {Path.GetFileName(currentProfile)} was read.");
+            }
+        }
         foreach (var profile in profiles)
         {
-            var folder = Path.Combine(profile, "AppData", "Local", "Microsoft", "Windows", "Explorer");
-            if (Directory.Exists(folder)) list.Add(new ThumbnailSource(Path.GetFileName(profile), folder));
-        }
-        return list;
-    }
-
-    static IEnumerable<string> SafeDirs(string root)
-    {
-        try
-        {
-            return Directory.EnumerateDirectories(root, "*", new EnumerationOptions
+            var user = Path.GetFileName(profile);
+            if (allUsers && NotAccounts.Contains(user)) continue;
+            if (PCPorter.Core.IO.FileIdentity.Entry(profile) is { IsLink: true })
             {
-                AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true,
-            }).ToList();
+                skipped.Add($"Skipped the account folder {user}: it is a link to another location.");
+                continue;
+            }
+            var folder = Path.Combine(profile, "AppData", "Local", "Microsoft", "Windows", "Explorer");
+            try
+            {
+                if (Directory.Exists(folder)) { list.Add(new ThumbnailSource(user, folder)); continue; }
+                _ = Directory.EnumerateFileSystemEntries(profile).Any();   // tells "no access" apart from "not there"
+                skipped.Add($"Skipped {user}: it has no File Explorer cache folder (the account may never have signed in on this PC).");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                skipped.Add($"Skipped {user}: access to the account folder was denied (run PCPorter as administrator to include it).");
+            }
+            catch (IOException ex)
+            {
+                skipped.Add($"Skipped {user}: the account folder could not be read ({ex.Message}).");
+            }
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { return []; }
+        return new LiveSourceSearch(list, skipped);
     }
 }
