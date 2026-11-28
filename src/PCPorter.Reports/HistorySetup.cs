@@ -68,7 +68,7 @@ public static class HistorySetup
         if (s.Profiles == 0) return "No web browser history was found.";
         string N(int n, string one, string many) => string.Format(culture, "{0:N0} {1}", n, n == 1 ? one : many);
         var visits = N(s.Visits, "visit", "visits") +
-                     (s.Recovered > 0 ? string.Format(culture, " ({0:N0} recovered after deletion or from restore points)", s.Recovered) : "");
+                     (s.Recovered > 0 ? string.Format(culture, " ({0:N0} recovered from leftover data or restore points: deleted, or older copies)", s.Recovered) : "");
         return $"{N(s.Profiles, "browser profile", "browser profiles")}: {visits}, {N(s.Searches, "search", "searches")}, " +
                $"{N(s.Downloads, "download", "downloads")}, {N(s.Bookmarks, "bookmark", "bookmarks")}, {N(s.Tabs, "tab", "tabs")}, " +
                $"{N(s.Forms, "form entry", "form entries")}.";

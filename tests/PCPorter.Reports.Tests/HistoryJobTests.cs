@@ -225,7 +225,7 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal([T0.AddMinutes(2), T0.AddMinutes(3)], recovered.Select(v => v.When));
         Assert.Equal(4, r.Scan.Coverage.Single().Visits);                // coverage is what the browser itself still keeps
         Assert.Equal(2, HistoryJob.Summarize(r).Recovered);
-        Assert.Contains(r.Scan.Notes, n => n.Contains("2 deleted visits were recovered"));
+        Assert.Contains(r.Scan.Notes, n => n.Contains("2 visits were recovered from leftover data"));
 
         using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
         var row = db.Search("site2.example").Single(a => a.Category == "WebHistory.Visit");

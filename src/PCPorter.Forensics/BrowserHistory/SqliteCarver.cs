@@ -12,7 +12,9 @@ namespace PCPorter.Forensics.BrowserHistory;
 /// pages (main-file pages that the log replaces, and log frames that a later committed frame replaces). A candidate
 /// is kept only when it decodes cleanly against the table's own column layout (serial types, an http/https/ftp/file
 /// address, a time between 2000 and tomorrow) and is not already in the live database. Rows that continued on
-/// overflow pages are skipped and counted. Works on bytes only; nothing is written anywhere.
+/// overflow pages are skipped and counted. Works on bytes only; nothing is written anywhere. Leftover bytes do not
+/// prove a deletion (SQLite also leaves old copies when it moves or updates a row), so rows are labelled
+/// "recovered from leftover data", never "deleted".
 /// </summary>
 public static class SqliteCarver
 {
@@ -72,14 +74,24 @@ public static class SqliteCarver
             t => FirefoxHistoryReader.MapVisitType((int)t, false), _ => 0);
     }
 
-    /// <summary>The notes a reader adds for what the carver found.</summary>
+    /// <summary>What a recovered row is labelled: the bytes were left over, which does not prove the visit was deleted.</summary>
+    public const string Label = "Recovered from leftover data";
+
+    /// <summary>The notes a reader adds for what the carver found, one per place the rows came from.</summary>
     internal static void Describe(BrowserProfile profile, Result r, List<string> notes)
     {
         var who = $"{profile.Browser} ({profile.Name}) for {profile.User}";
-        if (r.Visits.Count > 0)
-            notes.Add($"{who}: {r.Visits.Count} deleted visit{(r.Visits.Count == 1 ? " was" : "s were")} recovered from free space inside the history file (marked \"Recovered (deleted)\").");
+        static string Visits(int n) => $"{n} visit{(n == 1 ? " was" : "s were")}";
+        var free = r.Visits.Count(v => v.OriginNote == FreeSpace);
+        var older = r.Visits.Count(v => v.OriginNote == OlderCopy);
+        if (free > 0)
+            notes.Add($"{who}: {Visits(free)} recovered from leftover data in the free space of the history file (marked \"{Label}\"). " +
+                      "Such rows may have been deleted, or be an older copy of a visit the browser moved or changed.");
+        if (older > 0)
+            notes.Add($"{who}: {Visits(older)} recovered from leftover data in earlier versions of the history file's pages (kept in its " +
+                      $"write-ahead log or replaced pages; marked \"{Label}\"). Such rows may have been deleted, or be an older copy of a visit the browser changed.");
         if (r.Spilled > 0)
-            notes.Add($"{who}: {r.Spilled} deleted {(r.Spilled == 1 ? "entry was" : "entries were")} too long to recover (the rest of the entry was on another page).");
+            notes.Add($"{who}: {r.Spilled} leftover address {(r.Spilled == 1 ? "entry was" : "entries were")} too long to recover (the rest of the entry was on another page).");
     }
 
     // ---------------------------------------------------------------- pages of the database and its log
@@ -95,8 +107,10 @@ public static class SqliteCarver
         bool mainOk = main.Length >= 100 && main.AsSpan(0, 16).SequenceEqual("SQLite format 3\0"u8);
         int pageSize = mainOk ? PageSizeOf(BE16(main, 16)) : 0;
 
-        // Write-ahead log: valid frames are the prefix whose salts and running checksums match the log header.
-        var frames = new List<(uint Page, int Data, bool Committed)>();
+        // Write-ahead log: valid frames are the prefix whose salts and running checksums match the log header. Frames
+        // after the last commit that carry the header's salts are a change still being written (or torn): not older
+        // data, so they are skipped. Frames with other salts are left from an earlier round of the log: older page versions.
+        var frames = new List<(uint Page, int Data, bool Committed, bool Earlier)>();
         uint commitSize = 0;
         if (wal is { Length: >= 32 } && BE32(wal, 0) is 0x377f0682 or 0x377f0683)
         {
@@ -122,7 +136,7 @@ public static class SqliteCarver
                             valid = s0 == BE32(wal, o + 16) && s1 == BE32(wal, o + 20);
                         }
                     }
-                    frames.Add((BE32(wal, o), o + 24, false));
+                    frames.Add((BE32(wal, o), o + 24, false, BE32(wal, o + 8) != salt1 || BE32(wal, o + 12) != salt2));
                     if (valid && BE32(wal, o + 4) is var size and > 0) { last = frames.Count - 1; commitSize = size; }
                 }
                 for (int i = 0; i <= last; i++) frames[i] = frames[i] with { Committed = true };
@@ -147,7 +161,7 @@ public static class SqliteCarver
             // No readable header: every page is searched as free space with UTF-8 text and no reserved bytes.
             engine.SetGeometry(pageSize, 0, 1);
             for (uint pg = 1; pg <= mainPages; pg++) { Tick(pg, ct); engine.Full(main, (int)((pg - 1) * (long)pageSize), FreeSpace); }
-            foreach (var f in frames) engine.Full(wal!, f.Data, OlderCopy);
+            foreach (var f in frames) if (f.Committed || f.Earlier) engine.Full(wal!, f.Data, OlderCopy);
             return;
         }
         if (!engine.SetGeometry(pageSize, p1[p1Off + 20], BE32(p1, p1Off + 56))) return;
@@ -185,6 +199,7 @@ public static class SqliteCarver
             Tick((uint)i, ct);
             var f = frames[i];
             if (current.TryGetValue(f.Page, out var cur) && cur == i) continue;
+            if (!f.Committed && !f.Earlier) continue;                      // an unsaved change, not an older version
             engine.Full(wal!, f.Data, OlderCopy, f.Page == 1 ? 100 : 0, f.Page == 1 ? 100 : 0);
         }
     }

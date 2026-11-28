@@ -67,7 +67,7 @@ public sealed class HistorySetupTests : IDisposable
     {
         var s = new HistorySummary("r", "c", Profiles: 2, Visits: 1234, Searches: 5, Downloads: 1, Recovered: 7, Notes: 0, Warnings: 0,
             Bookmarks: 3, Tabs: 4, Forms: 6);
-        Assert.Equal("2 browser profiles: 1,234 visits (7 recovered after deletion or from restore points), 5 searches, 1 download, " +
+        Assert.Equal("2 browser profiles: 1,234 visits (7 recovered from leftover data or restore points: deleted, or older copies), 5 searches, 1 download, " +
                      "3 bookmarks, 4 tabs, 6 form entries.", HistorySetup.Describe(s, System.Globalization.CultureInfo.GetCultureInfo("en-US")));
         var none = new HistorySummary("r", "c", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         Assert.Equal("No web browser history was found.", HistorySetup.Describe(none, System.Globalization.CultureInfo.GetCultureInfo("en-US")));
