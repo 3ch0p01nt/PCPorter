@@ -58,6 +58,7 @@ public static class FirefoxHistoryReader
         List<Search> searches;
         List<Bookmark> bookmarks;
         List<Download> downloads;
+        HashSet<string>? liveKeys = null;
         using (var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "places.sqlite"), workFolder))
         {
             SqliteConnection? conn = null;
@@ -66,12 +67,15 @@ public static class FirefoxHistoryReader
                 conn = snap.Open();
                 var live = conn;
                 var urlSearches = new List<Search>();
-                visits = ReadVisits(conn, profile, urlSearches, ct);
+                var keys = new List<string>();
+                visits = ReadVisits(conn, profile, urlSearches, ct, keys);
                 searches = ChromiumHistoryReader.MergeSearches([], urlSearches);
                 bookmarks = ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(live, profile));
                 downloads = ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(live, profile, stillOnDisk, notes, ct));
+                ChromiumHistoryReader.WarnInconsistent(profile, snap, warnings);
                 visits.AddRange(ChromiumHistoryReader.Carve(profile, snap, notes, warnings,
                     () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
+                liveKeys = [.. keys];
             }
             catch (SqliteException e) when (ChromiumHistoryReader.IsDamaged(e))
             {
@@ -85,18 +89,19 @@ public static class FirefoxHistoryReader
         }
         var forms = ChromiumHistoryReader.Part(profile, "saved form entries", warnings, () => ReadForms(profile, workFolder, notes, ct));
         var tabs = ChromiumHistoryReader.Part(profile, "open and recently closed tabs", warnings, () => ReadSession(profile, notes));
-        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings };
+        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings, VisitKeys = liveKeys };
     }
 
-    /// <summary>Only the visits of a profile's places.sqlite (for older copies, e.g. in restore points).</summary>
-    public static List<Visit> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
+    /// <summary>Only the visits of a profile's places.sqlite (for older copies, e.g. in restore points), each with its key; nothing is carved.</summary>
+    internal static List<(Visit Visit, string Key)> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
     {
-        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "places.sqlite"), workFolder);
+        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "places.sqlite"), workFolder, keepRaw: false);
         using var conn = snap.Open();
-        return ReadVisits(conn, profile, [], ct);
+        var keys = new List<string>();
+        return ReadVisits(conn, profile, [], ct, keys).Zip(keys).ToList();
     }
 
-    static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct)
+    static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct, List<string> keys)
     {
         var list = new List<Visit>();
         using var cmd = conn.CreateCommand();
@@ -110,6 +115,7 @@ public static class FirefoxHistoryReader
             var raw = r.GetString(0);
             var title = r.IsDBNull(1) ? null : r.GetString(1);
             list.Add(new Visit(profile, Redactor.Redact(raw), string.IsNullOrEmpty(title) ? null : Redactor.Redact(title), when, how, 0));
+            keys.Add(ProfileHistory.VisitKey(raw, when));
             if (SearchTerms.FromUrl(raw) is { } s) urlSearches.Add(new Search(profile, Redactor.Redact(s.Terms), s.Engine, when));
         }
         return list;
@@ -211,7 +217,8 @@ public static class FirefoxHistoryReader
             var d = byPlace[place];
             if (d.Target is null) continue;
             var (state, bytes, end) = Metadata(d.Meta);
-            list.Add(new Download(profile, Redactor.Redact(d.Url), null, d.Target, d.Added ?? end, bytes, state, stillOnDisk?.Invoke(d.Target)));
+            // The saved-as path (decoded from its file: address) is masked; on-disk is checked with the real one.
+            list.Add(new Download(profile, Redactor.Redact(d.Url), null, Redactor.Redact(d.Target), d.Added ?? end, bytes, state, stillOnDisk?.Invoke(d.Target)));
         }
         return list.OrderBy(d => d.Started).ToList();
     }
@@ -248,7 +255,7 @@ public static class FirefoxHistoryReader
     {
         var path = Path.Combine(profile.Folder, "formhistory.sqlite");
         if (!BrowserProfileFinder.FileExists(path)) return [];
-        using var snap = DbSnapshot.Take(path, workFolder);
+        using var snap = DbSnapshot.Take(path, workFolder, keepRaw: false);      // never carved: its bytes are not held in memory
         using var conn = snap.Open();
         SqliteReadGuard.AllowOnly(conn, FormTable);
         var list = new List<FormEntry>();

@@ -1,6 +1,4 @@
-using System.ComponentModel;
 using System.Text;
-using Microsoft.Isam.Esent;
 using Microsoft.Isam.Esent.Interop;
 using PCPorter.Collectors.Sources;
 using PCPorter.Core.Security;
@@ -54,7 +52,7 @@ public static class WebCacheReader
             }
             ReadDatabase(copy, db, profile, visits, searches, downloads, stillOnDisk, ct);
         }
-        catch (Exception e) when (e is EsentException or IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+        catch (Exception e) when (e is not OperationCanceledException)             // whatever the ESE engine throws stays with this profile
         {
             warnings.Add($"{who}: the history file could not be read ({e.Message.Split('\n')[0].Trim()}).");
             visits.Clear(); searches.Clear(); downloads.Clear();
@@ -152,7 +150,7 @@ public static class WebCacheReader
         if (url is null) return null;
         var referrer = addresses.FirstOrDefault(a => a != url);
         var target = strings.LastOrDefault(IsWindowsPath) ?? "";
-        return new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), target, e.When, 0,
+        return new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), Redactor.Redact(target), e.When, 0,
             DownloadState.Unknown, target.Length == 0 ? null : stillOnDisk?.Invoke(target));
     }
 

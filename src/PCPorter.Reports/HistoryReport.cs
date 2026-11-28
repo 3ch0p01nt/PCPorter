@@ -83,6 +83,7 @@ public static class HistoryReport
         using var w = new Utf8JsonWriter(output);
         w.WriteStartObject();
         w.WritePropertyName("meta"); JsonSerializer.Serialize(w, meta, Json);
+        w.WritePropertyName("pcTimeZone"); JsonSerializer.Serialize(w, scan.TimeZone, Json);
         w.WritePropertyName("notes"); JsonSerializer.Serialize(w, scan.Notes, Json);
         w.WritePropertyName("warnings"); JsonSerializer.Serialize(w, scan.Warnings, Json);
         w.WritePropertyName("howNames"); JsonSerializer.Serialize(w, Enum.GetNames<VisitHow>(), Json);

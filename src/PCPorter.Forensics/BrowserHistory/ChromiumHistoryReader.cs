@@ -37,16 +37,20 @@ public static class ChromiumHistoryReader
         List<Visit> visits;
         List<Search> searches;
         List<Download> downloads;
+        HashSet<string>? liveKeys = null;
         SqliteConnection? conn = null;
         try
         {
             conn = snap.Open();
             var urlSearches = new List<Search>();
-            visits = ReadVisits(conn, profile, urlSearches, ct);
+            var keys = new List<string>();
+            visits = ReadVisits(conn, profile, urlSearches, ct, keys);
             searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
             downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
+            WarnInconsistent(profile, snap, warnings);
             var live = conn;
             visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
+            liveKeys = [.. keys];
         }
         catch (SqliteException e) when (IsDamaged(e))
         {
@@ -58,15 +62,19 @@ public static class ChromiumHistoryReader
         var bookmarks = Part(profile, "bookmarks", warnings, () => ChromiumBookmarks.Read(profile));
         var tabs = Part(profile, "open and recently closed tabs", warnings, () => ChromiumSessions.Read(profile, notes));
         var forms = Part(profile, "saved form entries", warnings, () => ChromiumWebData.Read(profile, workFolder, notes, ct));
-        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings };
+        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings, VisitKeys = liveKeys };
     }
 
-    /// <summary>Only the visits of a profile's History database (for older copies, e.g. in restore points).</summary>
-    public static List<Visit> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
+    /// <summary>
+    /// Only the visits of a profile's History database (for older copies, e.g. in restore points), each with its
+    /// <see cref="ProfileHistory.VisitKey"/>. Nothing is carved, so the raw bytes are not kept.
+    /// </summary>
+    internal static List<(Visit Visit, string Key)> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
     {
-        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder);
+        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder, keepRaw: false);
         using var conn = snap.Open();
-        return ReadVisits(conn, profile, [], ct);
+        var keys = new List<string>();
+        return ReadVisits(conn, profile, [], ct, keys).Zip(keys).ToList();
     }
 
     /// <summary>Reads one optional part of a profile; if it fails, the rest of the profile is still shown.</summary>
@@ -100,32 +108,43 @@ public static class ChromiumHistoryReader
     /// <summary>SQLITE_CORRUPT (11) or SQLITE_NOTADB (26), including their extended codes.</summary>
     internal static bool IsDamaged(SqliteException e) => (e.SqliteErrorCode & 0xFF) is 11 or 26;
 
-    internal const string DamagedNote = "damaged history file";
-
     /// <summary>
-    /// A history file SQLite cannot open: every row still in its raw bytes is recovered by the carver (live rows too, since
-    /// nothing can be compared with), labelled as recovered, with a warning that the file is damaged.
+    /// A copy SQLite cannot open (the file itself is damaged, or the browser kept writing while it was copied): every row
+    /// still in its raw bytes is read by the carver (rows the browser still lists too, since nothing can be compared
+    /// with), marked "from a damaged copy" (never "deleted"), with a warning.
     /// </summary>
     internal static List<Visit> CarveDamaged(BrowserProfile profile, DbSnapshot snap, List<string> notes, List<string> warnings, Func<SqliteCarver.Result> carve)
     {
         var who = $"{profile.Browser} ({profile.Name}) for {profile.User}";
+        var file = Path.GetFileName(snap.SourcePath);
         notes.AddRange(snap.Warnings.Select(w => $"{who}: {w}"));
+        var why = $"the copy of the history file {file} could not be opened after {snap.CopiesTaken} tr{(snap.CopiesTaken == 1 ? "y" : "ies")} " +
+                  "(the file is damaged, or the browser kept writing to it while it was copied)";
         try
         {
             var r = carve();
-            warnings.Add($"{who}: the history file {Path.GetFileName(snap.SourcePath)} is damaged and could not be opened. " +
-                         $"{r.Visits.Count} visit{(r.Visits.Count == 1 ? " was" : "s were")} carved from its raw bytes and are marked \"Recovered (deleted)\"; " +
-                         "some of them may not have been deleted. Searches and downloads from this file are not shown.");
-            return r.Visits.Select(v => v with { OriginNote = DamagedNote }).ToList();
+            warnings.Add($"{who}: {why}. {r.Visits.Count} visit{(r.Visits.Count == 1 ? " was" : "s were")} read from the copy's raw bytes and " +
+                         $"{(r.Visits.Count == 1 ? "is" : "are")} marked \"From a damaged copy\": most are probably still in the browser's history, " +
+                         "some may have been deleted. Searches and downloads from this file are not shown.");
+            return r.Visits.Select(v => v with { Origin = Origin.DamagedCopy, OriginNote = null }).ToList();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            warnings.Add($"{who}: the history file {Path.GetFileName(snap.SourcePath)} is damaged and could not be opened or searched: {e.Message.Split('\n')[0].Trim()}");
+            warnings.Add($"{who}: {why}, and its raw bytes could not be searched: {e.Message.Split('\n')[0].Trim()}");
             return [];
         }
     }
 
-    static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct)
+    /// <summary>A copy that opened although it never passed the consistency check: a warning, since rows may be missing.</summary>
+    internal static void WarnInconsistent(BrowserProfile profile, DbSnapshot snap, List<string> warnings)
+    {
+        if (snap.CopyProblem is null) return;
+        warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: no consistent copy of {Path.GetFileName(snap.SourcePath)} could be taken " +
+                     $"in {snap.CopiesTaken} tries ({snap.CopyProblem}); the browser was probably writing to it. Some visits may be missing.");
+    }
+
+    /// <param name="keys">Filled with each visit's key (same order as the visits), from the address before masking.</param>
+    static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct, List<string> keys)
     {
         var list = new List<Visit>();
         using var cmd = conn.CreateCommand();
@@ -141,6 +160,7 @@ public static class ChromiumHistoryReader
             var micros = r.IsDBNull(4) ? 0 : r.GetInt64(4);
             list.Add(new Visit(profile, Redactor.Redact(raw), string.IsNullOrEmpty(title) ? null : Redactor.Redact(title),
                 when, how, Math.Max(0, micros / 1_000_000)));
+            keys.Add(ProfileHistory.VisitKey(raw, when));
             if (SearchTerms.FromUrl(raw) is { } s) urlSearches.Add(new Search(profile, Redactor.Redact(s.Terms), s.Engine, when));
         }
         return list;
@@ -210,7 +230,8 @@ public static class ChromiumHistoryReader
                     3 or 4 => DownloadState.Interrupted,
                     _ => DownloadState.Unknown,
                 };
-                list.Add(new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), target,
+                // The saved-as path is masked like any address (a file name can hold a token); on-disk is checked with the real one.
+                list.Add(new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), Redactor.Redact(target),
                     Timestamps.FromWebKit(Number("start_time")), Number("received_bytes"), state,
                     target.Length == 0 ? null : stillOnDisk?.Invoke(target)));
             }

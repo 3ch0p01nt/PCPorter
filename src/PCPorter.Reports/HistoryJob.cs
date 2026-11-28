@@ -18,6 +18,8 @@ namespace PCPorter.Reports;
 public sealed record HistoryJobOptions(bool AllUsers = false, bool RestorePoints = true, IReadOnlyList<string>? ExtraNotes = null, string? CurrentUserSid = null,
     IReadOnlyList<RestorePointRoot>? RestorePointRoots = null, bool? Elevated = null, ISnapshotProvider? Snapshots = null);
 
+/// <param name="FolderWarnings">Always empty: the case folder's warnings are part of <see cref="HistoryScan.Warnings"/> (shown in the
+/// report and counted once). Kept so callers that add the two lists still count correctly.</param>
 public sealed record HistoryJobResult(string ReportPath, string CaseFolder, HistoryScan Scan, IReadOnlyList<string> FolderWarnings);
 
 /// <summary>
@@ -36,6 +38,9 @@ public static class HistoryJob
     {
         options ??= new HistoryJobOptions();
         var when = now ?? DateTimeOffset.UtcNow;
+        // Another PC's drive: never write the case onto it (compared by real volume location, not by the text of the paths).
+        if (!source.IsLive && CaseLocation.Check(outRoot, source.ReadRoot) is { IsAllowed: false } refused)
+            throw new CaseLocationRejectedException(refused.Reason!);
         var folder = CaseFolder.Create(outRoot, when);
         var work = Path.Combine(folder.Path, "work");
         CaseFolder.CreatePrivate(work);
@@ -54,15 +59,29 @@ public static class HistoryJob
         var users = Users(source, options, notes);
         Func<string, bool?> onDisk = path => StillOnDisk(source, path);
 
+        var liveKeys = new Dictionary<BrowserProfile, IReadOnlySet<string>?>();     // per profile: what its live history lists (null: unread)
+
         void Absorb(BrowserProfile profile, ProfileHistory h, string retention)
         {
             profiles.Add(profile);
+            if (profile.Family != BrowserFamily.WebCache) liveKeys[profile] = h.VisitKeys;
             visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
             bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
             warnings.AddRange(h.Warnings);
-            var liveVisits = h.Visits.Where(v => v.Origin == Origin.Live).ToList();      // how far back the browser itself keeps
+            // How far back the browser itself keeps (a damaged copy's rows are mostly the browser's own list).
+            var liveVisits = h.Visits.Where(v => v.Origin is Origin.Live or Origin.DamagedCopy).ToList();
             coverage.Add(new ProfileCoverage(profile, liveVisits.Count,
                 liveVisits.Count == 0 ? null : liveVisits.Min(v => v.When), liveVisits.Count == 0 ? null : liveVisits.Max(v => v.When), retention));
+        }
+
+        // One profile that cannot be read is a warning; the others are still read.
+        void Failed(BrowserProfile profile, Exception ex)
+        {
+            profiles.Add(profile);
+            if (profile.Family != BrowserFamily.WebCache) liveKeys[profile] = null;
+            var name = profile.Family == BrowserFamily.WebCache ? profile.Browser : $"{profile.Browser} ({profile.Name})";
+            warnings.Add($"{name} for {profile.User} could not be read: {FirstLine(ex.Message)}");
+            coverage.Add(new ProfileCoverage(profile, 0, null, null, "Could not be read; see the processing notes."));
         }
 
         try
@@ -86,27 +105,40 @@ public static class HistoryJob
                                 : ChromiumHistoryReader.Read(profile, work, onDisk, ct);
                             Absorb(profile, h, profile.Family == BrowserFamily.Firefox ? FirefoxRetention : ChromiumRetention);
                         }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            profiles.Add(profile);
-                            warnings.Add($"{profile.Browser} ({profile.Name}) for {user.UserName} could not be read: {FirstLine(ex.Message)}");
-                            coverage.Add(new ProfileCoverage(profile, 0, null, null, "Could not be read; see the processing notes."));
-                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException) { Failed(profile, ex); }
                     }
                 }
                 if (webCaches.Count > 0)
-                    ReadWebCaches(source, options, webCaches, work, onDisk, notes, progress, ct, (p, h) => Absorb(p, h, WebCacheRetention));
+                    ReadWebCaches(source, options, webCaches, work, onDisk, notes, progress, ct, (p, read) =>
+                    {
+                        try { if (read() is { } h) Absorb(p, h, WebCacheRetention); }    // null: not read, a note says why
+                        catch (Exception ex) when (ex is not OperationCanceledException) { Failed(p, ex); }
+                    });
 
-                if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && profiles.Count > 0)
+                if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && users.Count > 0)
                 {
                     progress?.Report($"Looking for older history in {roots.Count} restore point(s)");
-                    var rp = RestorePointHistory.Read(profiles, visits, roots, work, ct);
+                    var rp = RestorePointHistory.Read(users.Select(u => new RestorePointUser(u.UserName, u.ProfilePath!)).ToList(), liveKeys, roots, work, ct);
                     visits.AddRange(rp.Visits); notes.AddRange(rp.Notes); warnings.AddRange(rp.Warnings);
+                    foreach (var p in rp.Profiles)
+                    {
+                        profiles.Add(p);
+                        coverage.Add(new ProfileCoverage(p, 0, null, null, "No longer on this PC: found only in restore points."));
+                    }
                 }
             }
 
+            // Warnings about the case folder (e.g. a drive that cannot keep it private) are shown with the rest, so the
+            // report, the page and the CLI count the same warnings.
+            warnings.InsertRange(0, folder.Warnings);
+
+            // The copies are no longer needed: remove them before writing anything else, and say so if that fails.
+            if (!DeleteWork(work))
+                warnings.Add($"The temporary work folder {work} could not be deleted; it holds private copies of browser files. " +
+                             "Delete it by hand when PCPorter is closed.");
+
             var scan = new HistoryScan(profiles, coverage, visits.OrderBy(v => v.When).ToList(), searches.OrderBy(s => s.When).ToList(),
-                downloads.OrderBy(d => d.Started).ToList(), bookmarks, tabs, forms, notes, warnings);
+                downloads.OrderBy(d => d.Started).ToList(), bookmarks, tabs, forms, notes, warnings) { TimeZone = ScannedTimeZone(source) };
 
             using (var db = CaseDb.Open(Path.Combine(folder.Path, "case.db")))
                 db.Insert(Rows(scan));
@@ -115,14 +147,34 @@ public static class HistoryJob
             var computer = source.IsLive ? Environment.MachineName : $"Drive {source.ReadRoot}";
             var meta = new ReportMeta(computer, when, version, users.Select(u => u.UserName).ToList(), options.AllUsers || !source.IsLive);
             var report = HistoryReport.WriteFile(scan, meta, folder.Path);
-            return new HistoryJobResult(report, folder.Path, scan, folder.Warnings);
+            return new HistoryJobResult(report, folder.Path, scan, []);
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            DeleteWork(work);                                                   // a failed or cancelled run: best effort
         }
     }
+
+    /// <summary>Deletes the work folder, retrying while a file in it is still briefly held (SQLite, ESE, antivirus). True when it is gone.</summary>
+    static bool DeleteWork(string work)
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(work)) Directory.Delete(work, true);
+                return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= WorkDeleteAttempts) return !Directory.Exists(work);
+                Thread.Sleep(100 * attempt);
+            }
+        }
+    }
+
+    const int WorkDeleteAttempts = 5;
 
     /// <summary>Live: the person running PCPorter (every account with AllUsers). Offline: every account. Unavailable profiles become notes.</summary>
     static List<UserProfile> Users(ISystemSource source, HistoryJobOptions options, List<string> notes)
@@ -177,17 +229,19 @@ public static class HistoryJob
     /// <summary>
     /// Internet Explorer / legacy Edge history (WebCacheV01.dat). Offline: read straight from the drive. Live: Windows keeps
     /// the file locked, so it is read only as administrator, from a temporary shadow copy of C: that PCPorter makes and
-    /// always removes again; otherwise a note says why it was left out.
+    /// always removes again; otherwise a note says why it was left out. <paramref name="absorb"/> runs one profile's read and
+    /// keeps a failure to that profile (a warning); the read returns null when the profile was skipped with a note.
     /// </summary>
     static void ReadWebCaches(ISystemSource source, HistoryJobOptions options, List<BrowserProfile> caches, string work,
-        Func<string, bool?> onDisk, List<string> notes, IProgress<string>? progress, CancellationToken ct, Action<BrowserProfile, ProfileHistory> absorb)
+        Func<string, bool?> onDisk, List<string> notes, IProgress<string>? progress, CancellationToken ct, Action<BrowserProfile, Func<ProfileHistory?>> absorb)
     {
         if (!source.IsLive)
         {
             foreach (var p in caches)
             {
+                ct.ThrowIfCancellationRequested();
                 progress?.Report($"{p.User}: {p.Browser}");
-                absorb(p, WebCacheReader.Read(p, work, onDisk, ct));
+                absorb(p, () => WebCacheReader.Read(p, work, onDisk, ct));
             }
             return;
         }
@@ -207,14 +261,17 @@ public static class HistoryJob
                 {
                     ct.ThrowIfCancellationRequested();
                     progress?.Report($"{p.User}: {p.Browser}");
-                    string inSnapshot;
-                    try { inSnapshot = snap.Map(p.Folder); }
-                    catch (ArgumentException)
+                    absorb(p, () =>
                     {
-                        notes.Add($"{p.Browser} history for {p.User} is not on C:, so it was not read.");
-                        continue;
-                    }
-                    absorb(p, WebCacheReader.Read(p, work, OnTheLiveDrive, ct, inSnapshot));
+                        string inSnapshot;
+                        try { inSnapshot = snap.Map(p.Folder); }
+                        catch (ArgumentException)
+                        {
+                            notes.Add($"{p.Browser} history for {p.User} is not on C:, so it was not read.");
+                            return null;
+                        }
+                        return WebCacheReader.Read(p, work, OnTheLiveDrive, ct, inSnapshot);
+                    });
                 }
         }
         catch (Exception e) when (e is InvalidOperationException or UnauthorizedAccessException or System.Management.ManagementException or IOException
@@ -231,6 +288,22 @@ public static class HistoryJob
         bool? OnTheLiveDrive(string path)
         {
             using (SourceFiles.Confine(source.ReadRoot)) return onDisk(path);
+        }
+    }
+
+    /// <summary>The scanned PC's time zone: this PC's for a live run, else the SYSTEM hive's TimeZoneKeyName (unknown if unreadable).</summary>
+    static PcTimeZone ScannedTimeZone(ISystemSource source)
+    {
+        if (source.IsLive) return PcTimeZone.FromWindowsId(TimeZoneInfo.Local.Id);
+        try
+        {
+            var set = source.CurrentControlSet();
+            return set is null ? PcTimeZone.Unknown
+                : PcTimeZone.FromWindowsId(source.OpenHive(Hive.System)?.Open(set + @"\Control\TimeZoneInformation")?.GetString("TimeZoneKeyName"));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+        {
+            return PcTimeZone.Unknown;
         }
     }
 
@@ -274,7 +347,7 @@ public static class HistoryJob
     /// <summary>The counts the CLI prints (and --json emits).</summary>
     public static HistorySummary Summarize(HistoryJobResult r) => new(
         r.ReportPath, r.CaseFolder, r.Scan.Profiles.Count, r.Scan.Visits.Count, r.Scan.Searches.Count, r.Scan.Downloads.Count,
-        r.Scan.Visits.Count(v => v.Origin != Origin.Live), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
+        r.Scan.Visits.Count(v => v.Origin is Origin.Carved or Origin.RestorePoint or Origin.RestorePointCopy), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
         r.Scan.Bookmarks.Count, r.Scan.Tabs.Count, r.Scan.Forms.Count);
 
     /// <summary>0 when everything was read, 1 (partial) when anything was skipped with a warning.</summary>

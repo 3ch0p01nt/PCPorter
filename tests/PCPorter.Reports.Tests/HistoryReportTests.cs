@@ -59,6 +59,23 @@ public class HistoryReportTests
         Assert.Contains("addEventListener(\"toggle\", showForms)", html);        // the table is built only when opened
     }
 
+    [Fact]
+    public void Search_text_is_never_written_to_the_page_address_and_the_origin_column_is_bare()
+    {
+        var html = HistoryReport.Render(Scan(), Meta);
+        foreach (Match m in Regex.Matches(html, @"hashState\.set\(\{[^}]*\}\)"))
+            Assert.Matches(@"q:\s*""""", m.Value);                                  // q is only ever cleared
+        Assert.DoesNotContain("query()", string.Concat(Regex.Matches(html, @"hashState\.set\([^)]*\)").Select(m => m.Value)));
+        Assert.Contains("const originOf = v => originText[ORG[v[6]]] || ORG[v[6]];", html);
+    }
+
+    [Fact]
+    public void Csv_cells_starting_with_a_formula_after_whitespace_or_a_carriage_return_are_defused()
+    {
+        var html = HistoryReport.Render(Scan(), Meta);
+        Assert.Contains(@"if (/^(?:[=+\-@\t\r]|\s+[=+\-@])/.test(s)) s = ""'"" + s;", html);
+    }
+
     static JsonDocument EmbeddedData(string html)
     {
         var m = Regex.Match(html, "<script type=\"application/json\" id=\"data\">(.*?)</script>", RegexOptions.Singleline);

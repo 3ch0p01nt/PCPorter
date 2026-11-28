@@ -107,7 +107,7 @@
     <h2>Charts</h2>
     <div class="charts">
       <div class="card"><h3 id="perday-title">Visits per day</h3><svg id="perday" aria-labelledby="perday-title"></svg><div class="muted" style="font-size:12px">Click a bar to show those visits.</div></div>
-      <div class="card"><h3 id="heat-title">When: day of week and hour (this computer's time zone)</h3><svg id="heat" aria-labelledby="heat-title"></svg></div>
+      <div class="card"><h3 id="heat-title">When: day of week and hour</h3><svg id="heat" aria-labelledby="heat-title"></svg></div>
       <div class="card"><h3 id="top-title">Most visited sites</h3><svg id="top" aria-labelledby="top-title"></svg><div class="muted" style="font-size:12px">Click a site to show its visits.</div></div>
       <div class="card"><h3 id="how-title">How pages were opened</h3><svg id="how" aria-labelledby="how-title"></svg></div>
     </div>
@@ -126,10 +126,12 @@
 
   <section id="s-recovered">
     <h2>Recovered history</h2>
-    <p class="muted" style="margin-top:0">Visits that are no longer in the browser's history list: found in deleted space inside the history file
-      (left behind when history was cleared or expired) or in older copies of the file kept in restore points. Their address and time
-      come from the deleted data; how the page was opened is known only when the visit itself was recovered ("Other" otherwise).</p>
-    <div class="card"><table class="plain" id="recovered-summary"><thead><tr><th>Account</th><th>Browser</th><th>Profile</th><th>Recovered (deleted)</th><th>Recovered (restore point)</th></tr></thead><tbody></tbody></table></div>
+    <p class="muted" style="margin-top:0">Visits that the browser's history list does not show: found in leftover data inside the history file
+      (its free space, or earlier versions of its pages) or in older copies of the file kept in restore points. Leftover data does not
+      prove a deletion: a row may have been deleted (history cleared or expired), or be an older copy of a visit the browser moved or
+      changed. Their address and time come from the leftover data; how the page was opened is known only when the visit itself was
+      recovered ("Other" otherwise). The Origin details say where each row was found.</p>
+    <div class="card"><table class="plain" id="recovered-summary"><thead><tr><th>Account</th><th>Browser</th><th>Profile</th><th>From leftover data</th><th>From a restore point</th></tr></thead><tbody></tbody></table></div>
     <div id="recovered" style="margin-top:12px"></div>
     <dl class="detail" id="recovered-detail" hidden></dl>
   </section>
@@ -167,11 +169,18 @@
         <li>Never read: saved passwords, cookies, encryption keys, payment cards, bank details and saved addresses. Form fields that look like
           passwords, card, PIN or account numbers are dropped, and so are values that look like a card number.</li>
         <li>Chrome-family browsers keep about 90 days of visits; Firefox keeps visits until its history file reaches a size limit. Older visits are
-          gone unless they are recovered from deleted space or a restore point.</li>
+          gone unless they are recovered from leftover data or a restore point.</li>
         <li>Firefox keeps no separate list of searches: searches are recognised from the addresses of search result pages.</li>
         <li>Private (InPrivate / Incognito) windows leave almost no history. A missing visit does not prove a site was never opened.</li>
-        <li>Times are recorded by the browser in UTC and shown here in this computer's time zone. The CSV export contains UTC times.</li>
-        <li>"Recovered" rows come from deleted space inside the browser's files or from older copies in restore points; they are marked in the Origin column.</li>
+        <li id="zone-note">Times are recorded by the browser in UTC and shown here in the time zone of the computer showing this page. The CSV export contains UTC times.</li>
+        <li>"Recovered" rows come from leftover data inside the browser's files (free space, or earlier versions of pages kept in the
+          write-ahead log; changes the browser had not finished saving are skipped) or from older copies in restore points; they are marked
+          in the Origin column. A recovered row may have been deleted, or be an older copy of a visit: it is not proof of a deletion.</li>
+        <li>"Recovered (restore point)" visits are in a restore point's copy of a profile but not in that profile's current history.
+          "Restore point copy" visits come from a profile whose current history could not be read, or that is no longer on the PC, so
+          they could not be compared and may still be in the browser's history.</li>
+        <li>"From a damaged copy" rows come from a history file that could not be opened (damaged, or changing while it was copied); they
+          were read from its raw bytes and are mostly visits the browser still lists.</li>
       </ul>
     </div>
     <details style="margin-top:12px"><summary>Processing notes and warnings</summary><ul id="warnings"></ul></details>
@@ -198,7 +207,9 @@
   const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const howText = { Link: "Clicked a link", Typed: "Typed or searched", Bookmark: "From a bookmark", Redirect: "Passed through (redirect)", Reload: "Reloaded",
                     Generated: "Address bar suggestion", FormSubmit: "Sent a form", Other: "Other" };
-  const originText = { Live: "Browser history", Carved: "Recovered (deleted)", RestorePoint: "Recovered (restore point)" };
+  const originText = { Live: "Browser history", Carved: "Recovered from leftover data", RestorePoint: "Recovered (restore point)", DamagedCopy: "From a damaged copy",
+                       RestorePointCopy: "Restore point copy" };
+  const isRecovered = v => ORG[v[6]] === "Carved" || ORG[v[6]] === "RestorePoint" || ORG[v[6]] === "RestorePointCopy";
   const stateText = { InProgress: "In progress", Complete: "Complete", Cancelled: "Cancelled", Interrupted: "Interrupted", Unknown: "Unknown" };
   const prof = i => P[i] || { user: "?", browser: "?", name: "?" };
   const profText = i => `${prof(i).browser} - ${prof(i).name}`;
@@ -208,8 +219,21 @@
   const dur = s => !s ? "" : s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min`;
   const visits = data.visits;
 
+  // Time zones: times are shown in the zone of the browser showing this page; the scanned PC's own zone is named too.
+  const viewZone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })();
+  const offsetText = (() => { const m = -new Date().getTimezoneOffset(); return `UTC${m < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(m) / 60))}:${pad(Math.abs(m) % 60)}`; })();
+  const zone = viewZone || offsetText;
+  const pcZone = data.pcTimeZone || { display: "unknown" };
+  const pcZoneText = !pcZone.windowsId ? "the scanned PC's time zone is unknown"
+    : pcZone.iana && pcZone.iana === viewZone ? "the same as the scanned PC's" : `the scanned PC was set to ${pcZone.display}`;
+
   // Header, theme, navigation
-  $("meta").textContent = `${data.meta.computer} - generated ${fmt(Date.parse(data.meta.generatedUtc) / 1000)} - PCPorter ${data.meta.toolVersion} - accounts: ${(data.meta.users || []).join(", ") || "none"}`;
+  $("meta").textContent = `${data.meta.computer} - generated ${fmt(Date.parse(data.meta.generatedUtc) / 1000)} - PCPorter ${data.meta.toolVersion} - accounts: ${(data.meta.users || []).join(", ") || "none"}` +
+    ` - times in ${zone} (${pcZoneText})`;
+  $("heat-title").textContent = `When: day of week and hour (${zone})`;
+  $("zone-note").textContent = `Times are recorded by the browser in UTC and shown here in the time zone of the computer showing this page (${zone}); ` +
+    (!pcZone.windowsId ? "the scanned PC's own time zone setting could not be read." : `the scanned PC was set to ${pcZone.display}${pcZone.iana ? ` (${pcZone.iana})` : ""}.`) +
+    " The CSV export contains UTC times.";
   const applyTheme = t => { const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches); document.documentElement.dataset.theme = dark ? "dark" : "light"; };
   const theme = store.get("pcporter-theme", "system"); $("theme").value = theme; applyTheme(theme);
   $("theme").onchange = () => { store.set("pcporter-theme", $("theme").value); applyTheme($("theme").value); };
@@ -231,7 +255,7 @@
 
   // Tiles
   const sites = new Set(); let typed = 0, recovered = 0;
-  for (const v of visits) { sites.add(hostOf(S[v[1]])); if (HOW[v[4]] === "Typed") typed++; if (ORG[v[6]] !== "Live") recovered++; }
+  for (const v of visits) { sites.add(hostOf(S[v[1]])); if (HOW[v[4]] === "Typed") typed++; if (isRecovered(v)) recovered++; }
   sites.delete("");
   [["Visits", visits.length], ["Different sites", sites.size], ["Typed or searched", typed], ["Searches", data.searches.length],
    ["Downloads", data.downloads.length], ["Bookmarks", data.bookmarks.length], ["Open tabs", data.tabs.filter(t => t.state === "Open").length],
@@ -248,21 +272,23 @@
   // Visits table
   const filterFrom = () => $("from").value ? new Date($("from").value + "T00:00:00").getTime() / 1000 : null;
   const filterTo = () => $("to").value ? new Date($("to").value + "T00:00:00").getTime() / 1000 + 86400 : null;
-  // The view in the address (read before the table exists: building it rewrites the address)
+  // The view in the address (read before the table exists: building it rewrites the address). Only the dates are
+  // kept there: search text would end up in the browser's own history, so it is never written (an old "q" is still read once).
   const hq = hashState.get("q"), hf = hashState.get("from"), ht = hashState.get("to");
   if (hf) $("from").value = hf;
   if (ht) $("to").value = ht;
   let fromS = filterFrom(), toS = filterTo(), visitTable = null, ready = false;
-  const originOf = v => (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` (${S[v[7]]})` : "");
+  // The column (and its filter) shows the bare origin; where exactly a row was found is in the detail below the table.
+  const originOf = v => originText[ORG[v[6]]] || ORG[v[6]];
   const visitColumns = [
-    { label: "When", get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "11.5rem", descFirst: true },
+    { label: `When (${zone})`, get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "13rem", descFirst: true },
     { label: "Title", get: v => v[2] >= 0 ? S[v[2]] : "", width: "minmax(0,1.3fr)", filter: true },
     { label: "Address", get: v => S[v[1]], width: "minmax(0,2fr)", filter: true },
     { label: "How", get: v => howText[HOW[v[4]]] || HOW[v[4]], width: "10rem", filter: "select" },
     { label: "Time on page", get: v => v[5], text: v => dur(v[5]), width: "7rem" },
     { label: "Browser", get: v => profText(v[0]), width: "11rem", filter: "select" },
     { label: "Account", get: v => prof(v[0]).user, width: "7rem", filter: "select" },
-    { label: "Origin", get: originOf, width: "10rem", filter: "select", cls: "" },
+    { label: "Origin", get: originOf, width: "11rem", filter: "select", cls: "" },
   ];
   const visitDetail = dl => v => showDetail(dl, [["Address", S[v[1]], true], ["Title", v[2] >= 0 ? S[v[2]] : ""], ["When", `${fmt(v[3])} (UTC ${utc(v[3])})`],
     ["How", howText[HOW[v[4]]] || HOW[v[4]]], ["Browser", `${profText(v[0])} (${prof(v[0]).user})`], ["Origin", (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` - ${S[v[7]]}` : "")]]);
@@ -270,15 +296,15 @@
     name: "Visits", sort: 0, desc: true, height: 560, placeholder: "Search addresses, titles, browsers...",
     filter: v => (fromS == null || v[3] >= fromS) && (toS == null || v[3] < toS),
     onSelect: visitDetail($("visit-detail")),
-    onChange: () => { if (ready) hashState.set({ q: visitTable.query(), from: $("from").value, to: $("to").value }); },
+    onChange: () => { if (ready) hashState.set({ q: "", from: $("from").value, to: $("to").value }); },
   });
 
   // Recovered history: per profile counts and the recovered visits on their own
-  const recoveredVisits = visits.filter(v => ORG[v[6]] !== "Live");
+  const recoveredVisits = visits.filter(isRecovered);
   const perProfile = new Map();
-  for (const v of recoveredVisits) { const c = perProfile.get(v[0]) || { Carved: 0, RestorePoint: 0 }; c[ORG[v[6]]] = (c[ORG[v[6]]] || 0) + 1; perProfile.set(v[0], c); }
+  for (const v of recoveredVisits) { const c = perProfile.get(v[0]) || { Carved: 0, RestorePoint: 0 }; const k = ORG[v[6]] === "Carved" ? "Carved" : "RestorePoint"; c[k]++; perProfile.set(v[0], c); }
   const recBody = $("recovered-summary").tBodies[0];
-  if (!perProfile.size) recBody.append(el("tr", {}, [el("td", { colSpan: 5, className: "muted", textContent: "Nothing was recovered: no deleted visits were found in the history files" + (data.notes.some(n => /restore point/i.test(n)) ? " (see the notes about restore points)." : " or restore points.") })]));
+  if (!perProfile.size) recBody.append(el("tr", {}, [el("td", { colSpan: 5, className: "muted", textContent: "Nothing was recovered: no leftover visits were found in the history files" + (data.notes.some(n => /restore point/i.test(n)) ? " (see the notes about restore points)." : " or restore points.") })]));
   [...perProfile].sort((a, b) => coll.compare(profText(a[0]), profText(b[0]))).forEach(([p, c]) => recBody.append(el("tr", {},
     [prof(p).user, prof(p).browser, prof(p).name, (c.Carved || 0).toLocaleString(), (c.RestorePoint || 0).toLocaleString()].map(t => el("td", { textContent: t })))));
   vtable($("recovered"), visitColumns, recoveredVisits, { name: "Recovered visits", sort: 0, desc: true, height: 360,
@@ -332,7 +358,7 @@
 
   // Searches
   vtable($("searches"), [
-    { label: "When", get: s => s.t, text: s => fmt(s.t), csv: s => utc(s.t), width: "11.5rem", descFirst: true },
+    { label: `When (${zone})`, get: s => s.t, text: s => fmt(s.t), csv: s => utc(s.t), width: "13rem", descFirst: true },
     { label: "Searched for", get: s => s.terms, width: "minmax(0,2fr)", filter: true },
     { label: "Engine", get: s => s.engine, width: "10rem", filter: "select" },
     { label: "Browser", get: s => profText(s.p), width: "11rem", filter: "select" },

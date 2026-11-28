@@ -39,6 +39,19 @@ public class SqliteCarverTests
     static HashSet<(string Url, string? Title, DateTimeOffset When)> Carved(IEnumerable<Visit> visits) =>
         visits.Where(v => v.Origin == Origin.Carved).Select(v => (v.Url, v.Title, v.When)).ToHashSet();
 
+    static HashSet<(string Url, string? Title, DateTimeOffset When)> Damaged(IEnumerable<Visit> visits) =>
+        visits.Where(v => v.Origin == Origin.DamagedCopy).Select(v => (v.Url, v.Title, v.When)).ToHashSet();
+
+    /// <summary>A copy SQLite cannot open: every row is labelled "from a damaged copy", never "deleted", after three tries.</summary>
+    static void AssertDamagedCopy(ProfileHistory h)
+    {
+        var w = Assert.Single(h.Warnings);
+        Assert.Contains("From a damaged copy", w);
+        Assert.Contains("after 3 tries", w);
+        Assert.DoesNotContain("Recovered (deleted)", w);
+        Assert.All(h.Visits, v => Assert.Equal(Origin.DamagedCopy, v.Origin));
+    }
+
     /// <summary>Sorted text lines: xUnit compares these quickly and prints readable differences.</summary>
     static List<string> Text(IEnumerable<(string Url, string? Title, DateTimeOffset When)> rows) =>
         rows.Select(r => $"{r.When:O} {r.Url} {r.Title}").Order(StringComparer.Ordinal).ToList();
@@ -72,7 +85,7 @@ public class SqliteCarverTests
                 Assert.False(string.IsNullOrEmpty(v.OriginNote));
             });
             AssertNoLiveRepeated(h.Visits);
-            Assert.Contains(h.Notes, n => n.Contains("20 deleted visits"));
+            Assert.Contains(h.Notes, n => n.Contains("20 visits were recovered from leftover data in the free space"));
         }
         finally { BrowserFixtures.Delete(dir); }
     }
@@ -132,6 +145,71 @@ public class SqliteCarverTests
             Assert.Equal(30, h.Visits.Count(v => v.Origin == Origin.Live));
             Assert.Equal(Text(Expected(50, TwoInFive)), Text(Carved(h.Visits)));
             AssertNoLiveRepeated(h.Visits);
+        }
+        finally { BrowserFixtures.Delete(dir); }
+    }
+
+    /// <summary>
+    /// Turns the log's last transaction into one still being written: its commit frame loses its commit mark and the
+    /// running checksums from there on are recomputed, so the frames stay valid but are not committed.
+    /// </summary>
+    static byte[] UncommitLastTransaction(byte[] wal)
+    {
+        static uint BE(byte[] b, int o) => System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(o));
+        static void SetBE(byte[] b, int o, uint v) => System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(o), v);
+        bool big = (BE(wal, 0) & 1) != 0;
+        int page = (int)BE(wal, 8), frame = 24 + page;
+        uint U(int i) => big ? BE(wal, i) : System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(wal.AsSpan(i));
+        void Sum(int off, int len, ref uint s0, ref uint s1) { for (int i = off; i < off + len; i += 8) { unchecked { s0 += U(i) + s1; s1 += U(i + 4) + s0; } } }
+        int count = (wal.Length - 32) / frame;
+        var commits = Enumerable.Range(0, count).Where(i => BE(wal, 32 + i * frame + 4) != 0).ToList();
+        Assert.True(commits.Count >= 2, "the log needs two transactions");
+        SetBE(wal, 32 + commits[^1] * frame + 4, 0);
+        uint a = 0, b = 0;
+        Sum(0, 24, ref a, ref b);
+        for (int i = 0; i < count; i++)
+        {
+            int o = 32 + i * frame;
+            Sum(o, 8, ref a, ref b);
+            Sum(o + 24, page, ref a, ref b);
+            SetBE(wal, o + 16, a); SetBE(wal, o + 20, b);
+        }
+        return wal;
+    }
+
+    [Fact]
+    public void Frames_after_the_last_commit_are_an_unsaved_change_and_are_not_recovered()
+    {
+        var dir = BrowserFixtures.TempDir();
+        try
+        {
+            var folder = Path.Combine(dir, "Default");
+            var copied = Path.Combine(dir, "Copied");
+            Directory.CreateDirectory(copied);
+            using (var f = new ChromiumFixture(folder, "PRAGMA secure_delete=OFF; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;"))
+            {
+                f.Sql("PRAGMA wal_checkpoint(TRUNCATE);");
+                f.Sql("BEGIN");
+                for (int i = 0; i < 10; i++) f.Visit(f.Url(Address(i), Title(i), T0.AddMinutes(i)), T0.AddMinutes(i), ChainStart | ChainEnd | 1);
+                f.Sql("COMMIT");
+                f.Sql("BEGIN");                                                  // a second transaction: five new visits
+                for (int i = 10; i < 15; i++) f.Visit(f.Url(Address(i), Title(i), T0.AddMinutes(i)), T0.AddMinutes(i), ChainStart | ChainEnd | 1);
+                f.Sql("COMMIT");
+                static byte[] Shared(string p)
+                {
+                    using var fs = new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var ms = new MemoryStream();
+                    fs.CopyTo(ms);
+                    return ms.ToArray();
+                }
+                File.WriteAllBytes(Path.Combine(copied, "History"), Shared(f.Path));
+                File.WriteAllBytes(Path.Combine(copied, "History-wal"), UncommitLastTransaction(Shared(f.Path + "-wal")));
+            }
+
+            var h = ChromiumHistoryReader.Read(Chrome(copied), Path.Combine(dir, "work"));
+
+            Assert.Equal(10, h.Visits.Count(v => v.Origin == Origin.Live));      // SQLite ignores the unsaved change too
+            Assert.DoesNotContain(h.Visits, v => v.Origin == Origin.Carved);     // and it is not shown as recovered
         }
         finally { BrowserFixtures.Delete(dir); }
     }
@@ -234,7 +312,7 @@ public class SqliteCarverTests
             var h = ChromiumHistoryReader.Read(Chrome(folder), Path.Combine(dir, "work"));
 
             Assert.Equal(Text(Expected(6, i => i == 3)), Text(Carved(h.Visits)));
-            Assert.Contains(h.Notes, n => n.Contains("1 deleted entry was too long"));
+            Assert.Contains(h.Notes, n => n.Contains("1 leftover address entry was too long"));
         }
         finally { BrowserFixtures.Delete(dir); }
     }
@@ -367,9 +445,8 @@ public class SqliteCarverTests
 
             var h = ChromiumHistoryReader.Read(Chrome(folder), Path.Combine(dir, "work"));
 
-            Assert.Contains(h.Warnings, w => w.Contains("damaged") && w.Contains("carved", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(h.Visits, v => v.Origin != Origin.Carved);
-            Assert.Equal(Text(Expected(30, _ => true)), Text(Carved(h.Visits)));
+            AssertDamagedCopy(h);
+            Assert.Equal(Text(Expected(30, _ => true)), Text(Damaged(h.Visits)));
             Assert.All(h.Visits, v => Assert.Equal(VisitHow.Typed, v.How));
         }
         finally { BrowserFixtures.Delete(dir); }
@@ -393,9 +470,8 @@ public class SqliteCarverTests
 
             var h = FirefoxHistoryReader.Read(Fox(folder), Path.Combine(dir, "work"));
 
-            Assert.Contains(h.Warnings, w => w.Contains("damaged") && w.Contains("carved", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(h.Visits, v => v.Origin != Origin.Carved);
-            Assert.Equal(Text(Expected(30, _ => true)), Text(Carved(h.Visits)));
+            AssertDamagedCopy(h);
+            Assert.Equal(Text(Expected(30, _ => true)), Text(Damaged(h.Visits)));
         }
         finally { BrowserFixtures.Delete(dir); }
     }

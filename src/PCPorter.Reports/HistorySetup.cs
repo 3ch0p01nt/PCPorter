@@ -20,22 +20,14 @@ public static class HistorySetup
     public const string NotAdminNote = "PCPorter is not running as administrator, so only your own account was read. " +
                                        "Run it as administrator to include the other accounts (ask them first).";
 
-    /// <summary>Why the case cannot be saved there (cloud-synced, network, or on the drive being checked), or null when it can.</summary>
+    /// <summary>
+    /// Why the case cannot be saved there (cloud-synced, network, or on the drive being checked, however either is
+    /// reached: subst letter, mount point, \\?\ path), or null when it can.
+    /// </summary>
     public static string? SaveFolderProblem(string outRoot, string? offlineRoot)
     {
-        var check = CaseLocation.Check(outRoot);
-        if (!check.IsAllowed) return check.Reason;
-        if (offlineRoot is not null && IsUnder(Path.GetFullPath(outRoot), Path.GetFullPath(offlineRoot)))
-            return "Save the report somewhere other than the drive being checked, so nothing is written to it.";
-        return null;
-    }
-
-    static bool IsUnder(string path, string root)
-    {
-        path = Path.TrimEndingDirectorySeparator(path);
-        root = Path.TrimEndingDirectorySeparator(root);     // a drive root ("D:\") keeps its separator
-        var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
-        return path.Equals(root, StringComparison.OrdinalIgnoreCase) || path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        var check = CaseLocation.Check(outRoot, offlineRoot);
+        return check.IsAllowed ? null : check.Reason;
     }
 
     /// <summary>Job options for a request. "All accounts" on this PC without administrator becomes your own account plus a note.</summary>
@@ -68,7 +60,7 @@ public static class HistorySetup
         if (s.Profiles == 0) return "No web browser history was found.";
         string N(int n, string one, string many) => string.Format(culture, "{0:N0} {1}", n, n == 1 ? one : many);
         var visits = N(s.Visits, "visit", "visits") +
-                     (s.Recovered > 0 ? string.Format(culture, " ({0:N0} recovered after deletion or from restore points)", s.Recovered) : "");
+                     (s.Recovered > 0 ? string.Format(culture, " ({0:N0} recovered from leftover data or restore points: deleted, or older copies)", s.Recovered) : "");
         return $"{N(s.Profiles, "browser profile", "browser profiles")}: {visits}, {N(s.Searches, "search", "searches")}, " +
                $"{N(s.Downloads, "download", "downloads")}, {N(s.Bookmarks, "bookmark", "bookmarks")}, {N(s.Tabs, "tab", "tabs")}, " +
                $"{N(s.Forms, "form entry", "form entries")}.";

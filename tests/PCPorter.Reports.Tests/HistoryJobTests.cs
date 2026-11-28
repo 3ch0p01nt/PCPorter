@@ -170,6 +170,92 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal("Firefox/default-release", fox.Source);
     }
 
+    /// <summary>Calls back on the reporting thread (Progress&lt;T&gt; would post to the thread pool).</summary>
+    sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
+
+    [Fact]
+    public void A_work_folder_that_cannot_be_deleted_is_a_warning_naming_it()
+    {
+        using var source = Source();
+        FileStream? held = null;
+        var progress = new SyncProgress(_ =>
+        {
+            if (held is not null) return;
+            var work = Directory.GetDirectories(_out, "work", SearchOption.AllDirectories).Single();
+            held = new FileStream(Path.Combine(work, "held-open"), FileMode.CreateNew, FileAccess.Write, FileShare.None);   // e.g. a scanner holds a copy
+        });
+        try
+        {
+            var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), progress, Now);
+
+            var work = Path.Combine(r.CaseFolder, "work");
+            Assert.True(Directory.Exists(work));
+            Assert.Contains(r.Scan.Warnings, w => w.Contains(work, StringComparison.OrdinalIgnoreCase) && w.Contains("could not be deleted"));
+            Assert.Contains(work, File.ReadAllText(r.ReportPath).Replace(@"\\", @"\"), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(PCPorter.Core.Cli.ExitCodes.Partial, HistoryJob.ExitCode(r));
+        }
+        finally { held?.Dispose(); }
+    }
+
+    [Fact]
+    public void The_scanned_pcs_time_zone_comes_from_its_system_hive_offline_and_from_this_pc_live()
+    {
+        var system = RegSpec.Root().Key("Select", k => k.Num("Current", 1))
+            .Key(@"ControlSet001\Control\TimeZoneInformation", k => k.Str("TimeZoneKeyName", "Tokyo Standard Time"));
+        using var tokyo = new FakeSystemSource(_drive, system: system, users: [Bob]);
+        var r = HistoryJob.Run(_out, tokyo, new HistoryJobOptions(), now: Now);
+        Assert.Equal(("Tokyo Standard Time", "Asia/Tokyo"), (r.Scan.TimeZone.WindowsId, r.Scan.TimeZone.Iana));
+        Assert.Contains("\"pcTimeZone\":{\"windowsId\":\"Tokyo Standard Time\",\"iana\":\"Asia/Tokyo\"", File.ReadAllText(r.ReportPath));
+
+        using var noHive = new FakeSystemSource(_drive, users: [Bob]);
+        Assert.Equal(PcTimeZone.Unknown, HistoryJob.Run(_out, noHive, new HistoryJobOptions(), now: Now).Scan.TimeZone);
+
+        using var live = new FakeSystemSource(_drive, system: system, users: [Bob], live: true);
+        var mine = HistoryJob.Run(_out, live, new HistoryJobOptions(CurrentUserSid: Bob.Sid, RestorePoints: false, Elevated: false), now: Now);
+        Assert.Equal(TimeZoneInfo.Local.Id, mine.Scan.TimeZone.WindowsId);
+    }
+
+    [Fact]
+    public void Saved_as_paths_of_downloads_are_masked_everywhere_and_still_checked_on_disk()
+    {
+        const string secret = "Hunter2Secret77";
+        var name = $"api_key={secret}.txt";
+        var bob = Path.Combine(_drive, "Users", "bob");
+        Directory.CreateDirectory(Path.Combine(bob, "Downloads"));
+        File.WriteAllText(Path.Combine(bob, "Downloads", name), "x");
+        ChromeHistory(Path.Combine(bob, @"AppData\Local\Google\Chrome\User Data\Default"), c =>
+        {
+            Sql(c, $"INSERT INTO downloads VALUES (1, 'g', 'C:\\Users\\bob\\Downloads\\{name}', 'C:\\Users\\bob\\Downloads\\{name}', {WebKit(T0)}, 1, 1, 1, '', 'https://example.com/')");
+            Sql(c, "INSERT INTO downloads_url_chains VALUES (1, 0, 'https://example.com/file')");
+        });
+        var fox = Path.Combine(bob, @"AppData\Roaming\Mozilla\Firefox\Profiles\abcd.default-release");
+        FirefoxPlaces(fox);
+        using (var c = new SqliteConnection($"Data Source={Path.Combine(fox, "places.sqlite")};Pooling=False"))
+        {
+            c.Open();
+            Sql(c, "INSERT INTO moz_anno_attributes (id, name) VALUES (1, 'downloads/destinationFileURI')");
+            Sql(c, $"INSERT INTO moz_annos (place_id, anno_attribute_id, content, dateAdded) VALUES (1, 1, 'file:///C:/Users/bob/Downloads/api_key%3D{secret}.txt', {T0.ToUnixTimeMilliseconds() * 1000})");
+        }
+        WebCacheFixture.Create(Path.Combine(bob, WebCacheRel), new WebCacheFixture.Container(2, "iedownload",
+        [
+            new WebCacheFixture.Entry("iedownload:https://ie.example/f", T0,
+                ResponseHeaders: WebCacheFixture.DownloadHeaders("https://ie.example/f", "https://ie.example/", $@"C:\Users\bob\Downloads\{name}")),
+        ]));
+        using var source = new FakeSystemSource(_drive, users: [Bob]);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+
+        Assert.Equal(3, r.Scan.Downloads.Count);
+        Assert.All(r.Scan.Downloads, d => Assert.DoesNotContain(secret, d.TargetPath));
+        Assert.All(r.Scan.Downloads, d => Assert.StartsWith(@"C:\Users\bob\Downloads\api_key=", d.TargetPath));
+        Assert.All(r.Scan.Downloads, d => Assert.True(d.StillOnDisk));                    // checked with the real path
+        foreach (var file in Directory.EnumerateFiles(r.CaseFolder, "*", SearchOption.AllDirectories))
+            Assert.DoesNotContain(secret, System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(file)));
+    }
+
     [Fact]
     public void Bookmarks_tabs_and_form_entries_reach_the_report_and_secrets_reach_nothing()
     {
@@ -225,7 +311,7 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal([T0.AddMinutes(2), T0.AddMinutes(3)], recovered.Select(v => v.When));
         Assert.Equal(4, r.Scan.Coverage.Single().Visits);                // coverage is what the browser itself still keeps
         Assert.Equal(2, HistoryJob.Summarize(r).Recovered);
-        Assert.Contains(r.Scan.Notes, n => n.Contains("2 deleted visits were recovered"));
+        Assert.Contains(r.Scan.Notes, n => n.Contains("2 visits were recovered from leftover data"));
 
         using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
         var row = db.Search("site2.example").Single(a => a.Category == "WebHistory.Visit");
@@ -261,7 +347,8 @@ public sealed class HistoryJobTests : IDisposable
         var r = HistoryJob.Run(_out, source, new HistoryJobOptions(RestorePointRoots: [root]), now: Now);
 
         var old = Assert.Single(r.Scan.Visits, v => v.Origin == Origin.RestorePoint);
-        Assert.Equal(("https://old.example/", T0.AddDays(-50), "restore point 2026-01-20"), (old.Url, old.When, old.OriginNote));
+        Assert.Equal(("https://old.example/", T0.AddDays(-50)), (old.Url, old.When));
+        Assert.Equal($"restore point {TimeZoneInfo.ConvertTime(root.Created, TimeZoneInfo.Local):yyyy-MM-dd HH:mm}, no longer in the browser's history", old.OriginNote);
         Assert.Equal(2, r.Scan.Visits.Count);
         Assert.Equal(1, r.Scan.Coverage.Single().Visits);
         Assert.Equal(1, HistoryJob.Summarize(r).Recovered);
@@ -367,11 +454,36 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Contains(r2.Scan.Notes, n => n.Contains("Internet Explorer / legacy Edge history could not be read"));
     }
 
+    [Fact]
+    public void One_internet_explorer_profile_that_fails_unexpectedly_is_a_warning_and_the_others_are_read()
+    {
+        var shadow = Path.Combine(_out, "shadow");
+        IeCache(shadow);                                                   // bob's cache
+        WebCacheFixture.Create(Path.Combine(shadow, @"Users\carol", WebCacheRel),
+            new WebCacheFixture.Container(1, "History", [new WebCacheFixture.Entry("Visited: carol@https://carol.example/", T0)]));
+        foreach (var who in new[] { "bob", "carol" })
+        {
+            Directory.CreateDirectory(Path.Combine(_drive, "Users", who, WebCacheRel));
+            File.WriteAllBytes(Path.Combine(_drive, "Users", who, WebCacheRel, "WebCacheV01.dat"), [0]);
+        }
+        var carol = new UserProfile("S-1-5-21-1-2-3-1002", "carol", Path.Combine(_drive, "Users", "carol"), null, @"C:\Users\carol");
+        var snapshots = new FakeSnapshots(_drive, shadow) { FailFor = "carol" };     // e.g. an error Windows was not expected to give
+        using var source = new FakeSystemSource(_drive, users: [Bob, carol], live: true);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(AllUsers: true, RestorePoints: false, Elevated: true, Snapshots: snapshots), now: Now);
+
+        Assert.Equal(2, r.Scan.Visits.Count(v => v.Profile.User == "bob"));
+        Assert.Contains(r.Scan.Warnings, w => w.Contains("carol") && w.Contains("could not be read"));
+        Assert.Contains(r.Scan.Coverage, c => c.Profile.User == "carol" && c.Visits == 0);
+        Assert.Equal((1, 1), (snapshots.Created, snapshots.Disposed));
+    }
+
     /// <summary>A shadow copy provider whose "snapshot" maps the live drive folder onto another folder.</summary>
     sealed class FakeSnapshots(string liveRoot, string shadowRoot) : PCPorter.Core.Snapshots.ISnapshotProvider
     {
         public int Created, Disposed;
         public bool Fail;
+        public string? FailFor;
 
         public PCPorter.Core.Snapshots.ISnapshot Create(string volumeRoot)
         {
@@ -383,7 +495,9 @@ public sealed class HistoryJobTests : IDisposable
         sealed class Snap(FakeSnapshots owner, string liveRoot, string shadowRoot) : PCPorter.Core.Snapshots.ISnapshot
         {
             public string DeviceRoot => shadowRoot;
-            public string Map(string livePath) => livePath.StartsWith(liveRoot, StringComparison.OrdinalIgnoreCase)
+            public string Map(string livePath) =>
+                owner.FailFor is { } who && livePath.Contains(who, StringComparison.OrdinalIgnoreCase) ? throw new NotSupportedException("The path is in an unexpected form.")
+                : livePath.StartsWith(liveRoot, StringComparison.OrdinalIgnoreCase)
                 ? shadowRoot + livePath[liveRoot.Length..]
                 : throw new ArgumentException($"{livePath} is not on the snapshot volume.");
             public void Dispose() => owner.Disposed++;
