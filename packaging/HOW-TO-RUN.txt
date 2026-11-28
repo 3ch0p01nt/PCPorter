@@ -1,42 +1,66 @@
 PCPorter - how to run it on your PC
 ===================================
 
-1. Copy this whole PCPorter folder to the PC (or run it straight from the USB/backup drive).
-   Keep all 7 files together: PCPorter.exe needs the .dll files next to it.
+1. Unblock the zip first: right-click PCPorter.zip > Properties > tick "Unblock" > OK (or in PowerShell:
+   Unblock-File .\PCPorter.zip). Then extract it. Files extracted from a blocked zip are all marked as
+   "from the internet", which makes Windows ask about each of them.
+   Copy this whole PCPorter folder to the PC (or run it straight from the USB/backup drive).
+   Keep all 7 program files together: PCPorter.exe needs the .dll files next to it.
    Nothing needs to be installed first (.NET is built in).
 
-2. Right-click PCPorter.exe > Run as administrator.
-   Windows SmartScreen may say "Windows protected your PC" because the program is not code-signed:
-   click "More info" > "Run anyway". (This is your own build.)
+2. Right-click PCPorter.exe > Run as administrator (it always asks for administrator rights).
+   If Windows blocks it, see "If Windows blocks it" below.
 
 3. On the Home screen pick:
    - "Check health and security": antivirus, Windows protections, startup programs, apps to reinstall,
      hardware health. Read-only: nothing on the PC is changed. Produces HealthReport.html.
    - "Explore my PC's history" opens "Web history": websites visited, searches, downloads, bookmarks,
      open tabs and form entries from Chrome, Edge, Brave, Opera, Vivaldi, Firefox and Internet Explorer,
-     including deleted visits that can still be recovered (and older ones from restore points, as
-     administrator). Saved passwords, cookies and payment cards are never read. Produces History.html.
+     including deleted visits that can still be recovered (and older ones from restore points).
+     Saved passwords, cookies and payment cards are never read. Produces History.html.
      It works on this PC or on another PC's drive. From there, "Images viewed" is the picture gallery
      (thumbnail cache, browser caches, screenshots); both pages are also in the menu on the left.
    Save the results to your backup drive (PCPorter refuses OneDrive/cloud-synced folders on purpose).
 
 4. Old PC that won't start? Connect its drive to a working PC (USB adapter), then in
    "Check health and security" or "Web history" choose "Another PC's drive". If it's BitLocker-locked, unlock it in
-   File Explorer first with the recovery key (aka.ms/myrecoverykey).
+   File Explorer first with the recovery key (aka.ms/myrecoverykey). Save the results to a different drive:
+   PCPorter refuses to write onto the drive being checked.
 
-Optional: command line (open Terminal as administrator in this folder)
-   .\PCPorter.exe selftest
-   .\PCPorter.exe scan --out E:\
-   .\PCPorter.exe thumbs --out E:\
-   .\PCPorter.exe history --out E:\        (add --offline D:\ for another PC's drive, --all-users, --json)
-   Exit codes: 0 ok, 1 partial, 2 failed, 3 bad arguments, 4 not elevated, 5 findings (--fail-on), 6 cancelled.
+If Windows blocks it
+   PCPorter is not code-signed (it is your own build), so Windows treats it as an unknown program.
+   - "Windows protected your PC" (SmartScreen): click "More info", then "Run anyway".
+     If there is no "More info", the zip was not unblocked: delete the folder, unblock the zip (step 1), extract again.
+   - "Smart App Control blocked an app" (Windows 11): Smart App Control blocks unsigned programs and has NO
+     "Run anyway" button. Either run PCPorter on another PC (for an old PC: connect its drive to that PC and use
+     "Another PC's drive"), or turn Smart App Control off in Windows Security > App & browser control >
+     Smart App Control settings. Be aware that on many Windows 11 versions it cannot be turned back on afterwards
+     without resetting or reinstalling Windows.
+   - The administrator prompt (UAC) says "Unknown publisher": expected for an unsigned build. Check that the program
+     name is PCPorter.exe and the location is the folder you extracted, then click Yes.
+   - Antivirus removed or quarantined a file: restore it from the antivirus's quarantine and allow the folder, or
+     run PCPorter from the USB/backup drive.
+
+Optional: command line (open Terminal as administrator, then cd into this folder)
+   PCPorter.exe is a windowed program, so PowerShell does not wait for it on its own. Pipe it to Out-String:
+   PowerShell then waits until it finishes, shows its output, and $LASTEXITCODE holds its exit code.
+      cd E:\PCPorter
+      .\PCPorter.exe selftest | Out-String
+      .\PCPorter.exe scan --out E:\ | Out-String
+      $LASTEXITCODE
+      .\PCPorter.exe thumbs --out E:\ | Out-String
+      .\PCPorter.exe history --out E:\ | Out-String      (add --offline D:\ for another PC's drive, --all-users, --json)
+      $LASTEXITCODE
+   Exit codes: 0 ok, 1 partial, 2 failed, 3 bad arguments (also: a refused save folder), 4 not elevated,
+   5 findings (--fail-on), 6 cancelled.
 
 Optional: track this PC over time (baseline.ps1, for the developer)
-   Open PowerShell as administrator in this folder and run:
+   Open PowerShell as administrator, go to this folder, and run the script from there:
+      cd E:\PCPorter
       powershell -ExecutionPolicy Bypass -File .\baseline.ps1
-   It runs a scan and saves a summary with counts only (no names, paths or web addresses) to
-   C:\PCPorterCases\baselines. From the second run on it lists what changed since the baseline:
-   new serious findings, security checks that changed, counts that moved more than 10%, slower scans.
+   (It looks for PCPorter.exe next to itself.) It runs a scan and saves a summary with counts only (no names,
+   paths or web addresses) to C:\PCPorterCases\baselines. From the second run on it lists what changed since the
+   baseline: new serious findings, security checks that changed, counts that moved more than 10%, slower scans.
    When the changes are expected (new PCPorter version, apps you installed), accept them:
       powershell -ExecutionPolicy Bypass -File .\baseline.ps1 -Accept
    The summaries stay on this PC.
@@ -44,6 +68,6 @@ Optional: track this PC over time (baseline.ps1, for the developer)
 Where things go
    Results:  <your folder>\PCPorter\<PC name>_<date>\  (HealthReport.html, Thumbnails.html, History.html, case.db)
              These folders can only be opened by you and administrators.
-   Logs:     C:\ProgramData\PCPorter\logs (when run as administrator)
+   Logs:     C:\ProgramData\PCPorter\logs
 
 Not built yet: Backup/restore ("Move to my new PC"), timeline and passwords reports.
