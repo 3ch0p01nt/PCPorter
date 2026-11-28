@@ -170,6 +170,36 @@ public sealed class HistoryJobTests : IDisposable
         Assert.Equal("Firefox/default-release", fox.Source);
     }
 
+    /// <summary>Calls back on the reporting thread (Progress&lt;T&gt; would post to the thread pool).</summary>
+    sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
+
+    [Fact]
+    public void A_work_folder_that_cannot_be_deleted_is_a_warning_naming_it()
+    {
+        using var source = Source();
+        FileStream? held = null;
+        var progress = new SyncProgress(_ =>
+        {
+            if (held is not null) return;
+            var work = Directory.GetDirectories(_out, "work", SearchOption.AllDirectories).Single();
+            held = new FileStream(Path.Combine(work, "held-open"), FileMode.CreateNew, FileAccess.Write, FileShare.None);   // e.g. a scanner holds a copy
+        });
+        try
+        {
+            var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), progress, Now);
+
+            var work = Path.Combine(r.CaseFolder, "work");
+            Assert.True(Directory.Exists(work));
+            Assert.Contains(r.Scan.Warnings, w => w.Contains(work, StringComparison.OrdinalIgnoreCase) && w.Contains("could not be deleted"));
+            Assert.Contains(work, File.ReadAllText(r.ReportPath).Replace(@"\\", @"\"), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(PCPorter.Core.Cli.ExitCodes.Partial, HistoryJob.ExitCode(r));
+        }
+        finally { held?.Dispose(); }
+    }
+
     [Fact]
     public void Bookmarks_tabs_and_form_entries_reach_the_report_and_secrets_reach_nothing()
     {

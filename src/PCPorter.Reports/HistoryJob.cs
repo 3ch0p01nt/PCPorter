@@ -115,6 +115,11 @@ public static class HistoryJob
                 }
             }
 
+            // The copies are no longer needed: remove them before writing anything else, and say so if that fails.
+            if (!DeleteWork(work))
+                warnings.Add($"The temporary work folder {work} could not be deleted; it holds private copies of browser files. " +
+                             "Delete it by hand when PCPorter is closed.");
+
             var scan = new HistoryScan(profiles, coverage, visits.OrderBy(v => v.When).ToList(), searches.OrderBy(s => s.When).ToList(),
                 downloads.OrderBy(d => d.Started).ToList(), bookmarks, tabs, forms, notes, warnings);
 
@@ -129,10 +134,30 @@ public static class HistoryJob
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            DeleteWork(work);                                                   // a failed or cancelled run: best effort
         }
     }
+
+    /// <summary>Deletes the work folder, retrying while a file in it is still briefly held (SQLite, ESE, antivirus). True when it is gone.</summary>
+    static bool DeleteWork(string work)
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(work)) Directory.Delete(work, true);
+                return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= WorkDeleteAttempts) return !Directory.Exists(work);
+                Thread.Sleep(100 * attempt);
+            }
+        }
+    }
+
+    const int WorkDeleteAttempts = 5;
 
     /// <summary>Live: the person running PCPorter (every account with AllUsers). Offline: every account. Unavailable profiles become notes.</summary>
     static List<UserProfile> Users(ISystemSource source, HistoryJobOptions options, List<string> notes)

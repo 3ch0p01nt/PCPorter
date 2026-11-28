@@ -16,7 +16,7 @@ public static class ChromiumWebData
     {
         var path = Path.Combine(profile.Folder, "Web Data");
         if (!BrowserProfileFinder.FileExists(path)) return [];
-        using var snap = DbSnapshot.Take(path, workFolder);
+        using var snap = DbSnapshot.Take(path, workFolder, keepRaw: false);      // never carved: its bytes are not held in memory
         using var conn = snap.Open();
         SqliteReadGuard.AllowOnly(conn, Table);
         var list = new List<FormEntry>();

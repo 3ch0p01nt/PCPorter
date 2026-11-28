@@ -254,7 +254,7 @@ public static class FirefoxHistoryReader
     {
         var path = Path.Combine(profile.Folder, "formhistory.sqlite");
         if (!BrowserProfileFinder.FileExists(path)) return [];
-        using var snap = DbSnapshot.Take(path, workFolder);
+        using var snap = DbSnapshot.Take(path, workFolder, keepRaw: false);      // never carved: its bytes are not held in memory
         using var conn = snap.Open();
         SqliteReadGuard.AllowOnly(conn, FormTable);
         var list = new List<FormEntry>();
