@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Windows;
@@ -20,14 +21,27 @@ public partial class App : Application
         // Elevated app: never load DLLs from the current folder or PATH (DLL hijacking).
         SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
         SetDllDirectory("");
-        Logging.Init();
+        bool cli = e.Args.Length > 0;
+
+        // Attach to the caller's console only when output is NOT already redirected: attaching replaces a stdout
+        // that points at a file, so "pcporter scan --json > out.json" used to produce an empty file.
+        if (cli && GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) is not (FILE_TYPE_DISK or FILE_TYPE_PIPE)) AttachConsole(-1);
+
+        // Elevated, the log folder must be admin-only (AppFolders); when it cannot be made safe PCPorter stops here
+        // with a clear message instead of crashing on its first log line.
+        try { Logging.Init(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var message = Logging.StartFailure(ex);
+            if (cli) Console.Error.WriteLine(message);
+            else MessageBox.Show(message, "PCPorter", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(ExitCodes.Failed);
+            return;
+        }
 
         // With arguments: run as a command-line tool and exit with a documented code.
-        if (e.Args.Length > 0)
+        if (cli)
         {
-            // Attach to the caller's console only when output is NOT already redirected: attaching replaces a stdout
-            // that points at a file, so "pcporter scan --json > out.json" used to produce an empty file.
-            if (GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) is not (FILE_TYPE_DISK or FILE_TYPE_PIPE)) AttachConsole(-1);
             var elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
             var code = CliApp.Run(e.Args, elevated,
                 ThumbsCommand.Create(elevated, (s, p) => PCPorter.Reports.GalleryJobFactory.Options(s, elevated, p)),

@@ -13,12 +13,26 @@ namespace PCPorter.App.Infrastructure;
 /// </summary>
 public static class Logging
 {
-    public static string Folder { get; } = AppFolders.For("logs");
+    /// <summary>The log folder, known after <see cref="Init"/> (empty before).</summary>
+    public static string Folder { get; private set; } = "";
 
-    public static void Init() => Log.Logger = new LoggerConfiguration()
-        .MinimumLevel.Information()
-        .WriteTo.File(new RedactingFormatter(), Path.Combine(Folder, "pcporter-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14)
-        .CreateLogger();
+    /// <summary>Opens the log. Elevated, the admin-only folder must be safe, or PCPorter does not start.</summary>
+    /// <exception cref="UnsafeAppFolderException">Elevated, and %ProgramData%\PCPorter could not be made admin-only.</exception>
+    /// <exception cref="IOException">The log folder could not be created.</exception>
+    /// <exception cref="UnauthorizedAccessException">The log folder could not be created.</exception>
+    public static void Init()
+    {
+        Folder = AppFolders.For("logs");
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.File(new RedactingFormatter(), Path.Combine(Folder, "pcporter-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14)
+            .CreateLogger();
+    }
+
+    /// <summary>What to tell the person when <see cref="Init"/> failed (the program then exits with code 2).</summary>
+    public static string StartFailure(Exception ex) => ex is UnsafeAppFolderException
+        ? "PCPorter can't start: " + Redactor.Redact(ex.Message)
+        : "PCPorter can't start: its log folder could not be created (" + Redactor.Redact(ex.Message) + ")";
 
     public static void Close() => Log.CloseAndFlush();
 
