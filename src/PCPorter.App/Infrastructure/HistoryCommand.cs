@@ -41,10 +41,11 @@ public static class HistoryCommand
                 var r = HistorySetup.Run(request, elevated, new ConsoleProgress(!json), ct: cancel.Token);
                 var s = HistoryJob.Summarize(r);
                 var code = HistoryJob.ExitCode(r);
-                Console.WriteLine(json ? JsonSerializer.Serialize(new { summary = s, exitCode = code }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) :
+                CliOutput.Done(json, s,
                     $"Report: {s.Report}\n{s.Profiles} browser profiles: {s.Visits} visits, {s.Searches} searches, {s.Downloads} downloads, " +
-                    $"{s.Bookmarks} bookmarks, {s.Tabs} tabs, {s.Forms} form entries; warnings {s.Warnings}");
-                if (!json) foreach (var w in r.Scan.Warnings.Concat(r.FolderWarnings)) Console.Error.WriteLine("Warning: " + Redactor.Redact(w));
+                    $"{s.Bookmarks} bookmarks, {s.Tabs} tabs, {s.Forms} form entries; warnings {s.Warnings}",
+                    r.FolderWarnings, code, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                if (!json) foreach (var w in r.Scan.Warnings) Console.Error.WriteLine("Warning: " + Redactor.Redact(w));
                 Log.Information("history: {Profiles} profiles, {Visits} visits, {Warnings} warnings, exit {Code}", s.Profiles, s.Visits, s.Warnings, code);
                 return code;
             }

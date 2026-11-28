@@ -144,8 +144,9 @@ public partial class HistoryPage : Page
             _report = r.ReportPath; _case = r.CaseFolder;
             var s = HistoryJob.Summarize(r);
             var found = HistorySetup.Describe(s);
-            var message = found + (s.Warnings > 0 ? $" {s.Warnings} part{(s.Warnings == 1 ? "" : "s")} could not be read; the report's processing notes say which." : "");
-            Show(s.Warnings > 0 ? "Report ready, with gaps" : "Report ready", message,
+            var gaps = r.Scan.Warnings.Count;   // parts not read; the folder warnings are shown as they are, below
+            var message = found + (gaps > 0 ? $" {gaps} part{(gaps == 1 ? "" : "s")} could not be read; the report's processing notes say which." : "");
+            Show(gaps > 0 ? "Report ready, with gaps" : "Report ready", FolderWarnings.Append(message, r.FolderWarnings),
                 s.Warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
             Announce("Report ready. " + found);
             OpenReport.Visibility = CaseLinks.IsReport(_report) ? Visibility.Visible : Visibility.Collapsed;

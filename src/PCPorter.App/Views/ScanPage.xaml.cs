@@ -129,10 +129,11 @@ public partial class ScanPage : Page
                 (_cards.FirstOrDefault(c => c.Title == run.Collector) ?? AddCard(run.Collector)).State = Describe(run.Status, run.Items);
 
             var f = ScanSetup.CountFindings(r);
+            var folderWarnings = FolderWarnings.Of(r);
             if (r.Run.Cancelled)
             {
                 Announce("Scan stopped.");
-                Show("Stopped", "The scan was stopped before the end. The report shows what was checked so far. Nothing on the PC was changed.", InfoBarSeverity.Warning);
+                Show("Stopped", FolderWarnings.Append("The scan was stopped before the end. The report shows what was checked so far. Nothing on the PC was changed.", folderWarnings), InfoBarSeverity.Warning);
                 RememberRun(RunOutcome.Stopped, "Stopped before the end; the report shows what was checked so far.");
             }
             else
@@ -143,7 +144,8 @@ public partial class ScanPage : Page
                 var detail = gaps ? "Some parts could not be checked; the report says which and why." : "All parts were checked.";
                 Announce(finished);
                 Banner.IsOpen = f.WorthALook > 0;
-                Show("Done", detail, gaps ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+                Show("Done", FolderWarnings.Append(detail, folderWarnings),
+                    gaps || folderWarnings.Count > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
                 RememberRun(gaps ? RunOutcome.Partial : RunOutcome.Ok, $"{finished} {detail}");
             }
             OpenReport.Visibility = CaseLinks.IsReport(_report) ? Visibility.Visible : Visibility.Collapsed;

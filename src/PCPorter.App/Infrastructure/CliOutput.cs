@@ -17,6 +17,22 @@ public static class CliOutput
         return code;
     }
 
+    /// <summary>
+    /// A finished command's result: <c>{summary, folderWarnings, exitCode}</c> on stdout with --json, otherwise the text
+    /// on stdout and each folder warning on stderr. Warnings are redacted.
+    /// </summary>
+    public static void Done(bool json, object summary, string text, IReadOnlyList<string> folderWarnings, int code,
+        JsonSerializerOptions? options = null, TextWriter? stdout = null, TextWriter? stderr = null)
+    {
+        var warnings = folderWarnings.Select(Redactor.Redact).ToList();
+        if (json) (stdout ?? Console.Out).WriteLine(JsonSerializer.Serialize(new { summary, folderWarnings = warnings, exitCode = code }, options));
+        else
+        {
+            (stdout ?? Console.Out).WriteLine(text);
+            foreach (var w in warnings) (stderr ?? Console.Error).WriteLine("Warning: " + w);
+        }
+    }
+
     /// <summary>The exit for an exception that ended a command (see <see cref="JobErrors"/>); failures are logged.</summary>
     public static int Fail(bool json, Exception ex, string command, TextWriter? stdout = null, TextWriter? stderr = null)
     {

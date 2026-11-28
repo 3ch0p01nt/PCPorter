@@ -57,10 +57,10 @@ public static class ThumbsCommand
                     warnings = r.Scan.Warnings.Count + r.FolderWarnings.Count,
                 };
                 var code = summary.warnings > 0 ? ExitCodes.Partial : ExitCodes.Ok;
-                Console.WriteLine(json ? JsonSerializer.Serialize(new { summary, exitCode = code }) :
+                CliOutput.Done(json, summary,
                     $"Report: {r.ReportPath}\nThumbnails {summary.thumbnails}, web {summary.web}, screenshots {summary.screenshots}, opened {summary.opened}; " +
-                    $"deleted originals {summary.deletedOriginals}, no picture kept {summary.withoutPicture}; warnings {summary.warnings}");
-                foreach (var w in r.FolderWarnings) Console.Error.WriteLine("Warning: " + w);
+                    $"deleted originals {summary.deletedOriginals}, no picture kept {summary.withoutPicture}; warnings {summary.warnings}",
+                    r.FolderWarnings, code);
                 Log.Information("thumbs: {Count} items, {Warnings} warnings, exit {Code}", items.Count, summary.warnings, code);
                 return code;
             }

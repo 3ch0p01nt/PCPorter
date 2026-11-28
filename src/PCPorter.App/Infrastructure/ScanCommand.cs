@@ -57,9 +57,10 @@ public static class ScanCommand
                     findings = new { worthALook = f.WorthALook, unusual = f.Unusual },
                     warnings = r.Warnings.Count,
                 };
-                Console.WriteLine(asJson ? JsonSerializer.Serialize(new { summary, exitCode = code }) :
+                CliOutput.Done(asJson, summary,
                     $"Report: {r.ReportPath ?? r.CaseFolder}\n{f.WorthALook} worth a look, {f.Unusual} unusual; " +
-                    string.Join(", ", r.Run.Runs.Select(x => $"{x.Collector}: {x.Status} ({x.Items})")));
+                    string.Join(", ", r.Run.Runs.Select(x => $"{x.Collector}: {x.Status} ({x.Items})")),
+                    FolderWarnings.Of(r), code);
                 Log.Information("scan {ScanId}: {Status}, exit {Code}", r.ScanId, summary.status, code);
                 return code;
             }

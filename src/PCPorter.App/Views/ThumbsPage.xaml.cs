@@ -81,9 +81,10 @@ public partial class ThumbsPage : Page
             var items = r.Scan.Items;
             var msg = $"{items.Count(i => i.Kind == "thumbnail"):N0} thumbnails ({items.Count(i => i.Status == OriginalStatus.Deleted):N0} with deleted originals), " +
                       $"{items.Count(i => i.Kind == "web"):N0} web images, {items.Count(i => i.Kind == "screenshot"):N0} screenshots, {items.Count(i => i.Kind == "opened"):N0} opened files.";
-            var warnings = r.Scan.Warnings.Count + r.FolderWarnings.Count;
-            var message = msg + (warnings > 0 ? $" {warnings} parts could not be read; see the notes in the report." : "");
-            Show("Gallery ready", message, warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+            var gaps = r.Scan.Warnings.Count;   // parts not read; the folder warnings are shown as they are, below
+            var warnings = gaps + r.FolderWarnings.Count;
+            var message = msg + (gaps > 0 ? $" {gaps} part{(gaps == 1 ? "" : "s")} could not be read; see the notes in the report." : "");
+            Show("Gallery ready", FolderWarnings.Append(message, r.FolderWarnings), warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
             OpenReport.Visibility = CaseLinks.IsReport(_reportPath) ? Visibility.Visible : Visibility.Collapsed;
             Status.Text = r.ReportPath;
             RememberRun(warnings > 0 ? RunOutcome.Partial : RunOutcome.Ok, message);
