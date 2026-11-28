@@ -70,6 +70,7 @@ public static class FirefoxHistoryReader
                 searches = ChromiumHistoryReader.MergeSearches([], urlSearches);
                 bookmarks = ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(live, profile));
                 downloads = ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(live, profile, stillOnDisk, notes, ct));
+                ChromiumHistoryReader.WarnInconsistent(profile, snap, warnings);
                 visits.AddRange(ChromiumHistoryReader.Carve(profile, snap, notes, warnings,
                     () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
             }

@@ -60,7 +60,8 @@ public static class HistoryJob
             visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
             bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
             warnings.AddRange(h.Warnings);
-            var liveVisits = h.Visits.Where(v => v.Origin == Origin.Live).ToList();      // how far back the browser itself keeps
+            // How far back the browser itself keeps (a damaged copy's rows are mostly the browser's own list).
+            var liveVisits = h.Visits.Where(v => v.Origin is Origin.Live or Origin.DamagedCopy).ToList();
             coverage.Add(new ProfileCoverage(profile, liveVisits.Count,
                 liveVisits.Count == 0 ? null : liveVisits.Min(v => v.When), liveVisits.Count == 0 ? null : liveVisits.Max(v => v.When), retention));
         }
@@ -274,7 +275,7 @@ public static class HistoryJob
     /// <summary>The counts the CLI prints (and --json emits).</summary>
     public static HistorySummary Summarize(HistoryJobResult r) => new(
         r.ReportPath, r.CaseFolder, r.Scan.Profiles.Count, r.Scan.Visits.Count, r.Scan.Searches.Count, r.Scan.Downloads.Count,
-        r.Scan.Visits.Count(v => v.Origin != Origin.Live), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
+        r.Scan.Visits.Count(v => v.Origin is Origin.Carved or Origin.RestorePoint), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
         r.Scan.Bookmarks.Count, r.Scan.Tabs.Count, r.Scan.Forms.Count);
 
     /// <summary>0 when everything was read, 1 (partial) when anything was skipped with a warning.</summary>

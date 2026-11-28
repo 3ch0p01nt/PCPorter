@@ -3,8 +3,11 @@ namespace PCPorter.Forensics.BrowserHistory;
 /// <summary>How a page was reached, simplified from the browser's own transition types.</summary>
 public enum VisitHow { Link, Typed, Bookmark, Redirect, Reload, Generated, FormSubmit, Other }
 
-/// <summary>Where a row came from: the live database (including its write-ahead log), carved free space, or a restore point.</summary>
-public enum Origin { Live, Carved, RestorePoint }
+/// <summary>
+/// Where a row came from: the live database (including its write-ahead log), leftover data inside the file (carved),
+/// a restore point, or the raw bytes of a copy SQLite could not open (DamagedCopy: mostly rows the browser still lists).
+/// </summary>
+public enum Origin { Live, Carved, RestorePoint, DamagedCopy }
 
 public enum DownloadState { InProgress, Complete, Cancelled, Interrupted, Unknown }
 

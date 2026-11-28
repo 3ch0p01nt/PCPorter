@@ -39,6 +39,19 @@ public class SqliteCarverTests
     static HashSet<(string Url, string? Title, DateTimeOffset When)> Carved(IEnumerable<Visit> visits) =>
         visits.Where(v => v.Origin == Origin.Carved).Select(v => (v.Url, v.Title, v.When)).ToHashSet();
 
+    static HashSet<(string Url, string? Title, DateTimeOffset When)> Damaged(IEnumerable<Visit> visits) =>
+        visits.Where(v => v.Origin == Origin.DamagedCopy).Select(v => (v.Url, v.Title, v.When)).ToHashSet();
+
+    /// <summary>A copy SQLite cannot open: every row is labelled "from a damaged copy", never "deleted", after three tries.</summary>
+    static void AssertDamagedCopy(ProfileHistory h)
+    {
+        var w = Assert.Single(h.Warnings);
+        Assert.Contains("From a damaged copy", w);
+        Assert.Contains("after 3 tries", w);
+        Assert.DoesNotContain("Recovered (deleted)", w);
+        Assert.All(h.Visits, v => Assert.Equal(Origin.DamagedCopy, v.Origin));
+    }
+
     /// <summary>Sorted text lines: xUnit compares these quickly and prints readable differences.</summary>
     static List<string> Text(IEnumerable<(string Url, string? Title, DateTimeOffset When)> rows) =>
         rows.Select(r => $"{r.When:O} {r.Url} {r.Title}").Order(StringComparer.Ordinal).ToList();
@@ -367,9 +380,8 @@ public class SqliteCarverTests
 
             var h = ChromiumHistoryReader.Read(Chrome(folder), Path.Combine(dir, "work"));
 
-            Assert.Contains(h.Warnings, w => w.Contains("damaged") && w.Contains("carved", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(h.Visits, v => v.Origin != Origin.Carved);
-            Assert.Equal(Text(Expected(30, _ => true)), Text(Carved(h.Visits)));
+            AssertDamagedCopy(h);
+            Assert.Equal(Text(Expected(30, _ => true)), Text(Damaged(h.Visits)));
             Assert.All(h.Visits, v => Assert.Equal(VisitHow.Typed, v.How));
         }
         finally { BrowserFixtures.Delete(dir); }
@@ -393,9 +405,8 @@ public class SqliteCarverTests
 
             var h = FirefoxHistoryReader.Read(Fox(folder), Path.Combine(dir, "work"));
 
-            Assert.Contains(h.Warnings, w => w.Contains("damaged") && w.Contains("carved", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(h.Visits, v => v.Origin != Origin.Carved);
-            Assert.Equal(Text(Expected(30, _ => true)), Text(Carved(h.Visits)));
+            AssertDamagedCopy(h);
+            Assert.Equal(Text(Expected(30, _ => true)), Text(Damaged(h.Visits)));
         }
         finally { BrowserFixtures.Delete(dir); }
     }

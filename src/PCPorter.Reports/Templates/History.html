@@ -198,7 +198,8 @@
   const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const howText = { Link: "Clicked a link", Typed: "Typed or searched", Bookmark: "From a bookmark", Redirect: "Passed through (redirect)", Reload: "Reloaded",
                     Generated: "Address bar suggestion", FormSubmit: "Sent a form", Other: "Other" };
-  const originText = { Live: "Browser history", Carved: "Recovered (deleted)", RestorePoint: "Recovered (restore point)" };
+  const originText = { Live: "Browser history", Carved: "Recovered (deleted)", RestorePoint: "Recovered (restore point)", DamagedCopy: "From a damaged copy" };
+  const isRecovered = v => ORG[v[6]] === "Carved" || ORG[v[6]] === "RestorePoint";
   const stateText = { InProgress: "In progress", Complete: "Complete", Cancelled: "Cancelled", Interrupted: "Interrupted", Unknown: "Unknown" };
   const prof = i => P[i] || { user: "?", browser: "?", name: "?" };
   const profText = i => `${prof(i).browser} - ${prof(i).name}`;
@@ -231,7 +232,7 @@
 
   // Tiles
   const sites = new Set(); let typed = 0, recovered = 0;
-  for (const v of visits) { sites.add(hostOf(S[v[1]])); if (HOW[v[4]] === "Typed") typed++; if (ORG[v[6]] !== "Live") recovered++; }
+  for (const v of visits) { sites.add(hostOf(S[v[1]])); if (HOW[v[4]] === "Typed") typed++; if (isRecovered(v)) recovered++; }
   sites.delete("");
   [["Visits", visits.length], ["Different sites", sites.size], ["Typed or searched", typed], ["Searches", data.searches.length],
    ["Downloads", data.downloads.length], ["Bookmarks", data.bookmarks.length], ["Open tabs", data.tabs.filter(t => t.state === "Open").length],
@@ -274,7 +275,7 @@
   });
 
   // Recovered history: per profile counts and the recovered visits on their own
-  const recoveredVisits = visits.filter(v => ORG[v[6]] !== "Live");
+  const recoveredVisits = visits.filter(isRecovered);
   const perProfile = new Map();
   for (const v of recoveredVisits) { const c = perProfile.get(v[0]) || { Carved: 0, RestorePoint: 0 }; c[ORG[v[6]]] = (c[ORG[v[6]]] || 0) + 1; perProfile.set(v[0], c); }
   const recBody = $("recovered-summary").tBodies[0];

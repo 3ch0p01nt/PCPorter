@@ -45,6 +45,7 @@ public static class ChromiumHistoryReader
             visits = ReadVisits(conn, profile, urlSearches, ct);
             searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
             downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
+            WarnInconsistent(profile, snap, warnings);
             var live = conn;
             visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
         }
@@ -100,29 +101,39 @@ public static class ChromiumHistoryReader
     /// <summary>SQLITE_CORRUPT (11) or SQLITE_NOTADB (26), including their extended codes.</summary>
     internal static bool IsDamaged(SqliteException e) => (e.SqliteErrorCode & 0xFF) is 11 or 26;
 
-    internal const string DamagedNote = "damaged history file";
-
     /// <summary>
-    /// A history file SQLite cannot open: every row still in its raw bytes is recovered by the carver (live rows too, since
-    /// nothing can be compared with), labelled as recovered, with a warning that the file is damaged.
+    /// A copy SQLite cannot open (the file itself is damaged, or the browser kept writing while it was copied): every row
+    /// still in its raw bytes is read by the carver (rows the browser still lists too, since nothing can be compared
+    /// with), marked "from a damaged copy" (never "deleted"), with a warning.
     /// </summary>
     internal static List<Visit> CarveDamaged(BrowserProfile profile, DbSnapshot snap, List<string> notes, List<string> warnings, Func<SqliteCarver.Result> carve)
     {
         var who = $"{profile.Browser} ({profile.Name}) for {profile.User}";
+        var file = Path.GetFileName(snap.SourcePath);
         notes.AddRange(snap.Warnings.Select(w => $"{who}: {w}"));
+        var why = $"the copy of the history file {file} could not be opened after {snap.CopiesTaken} tr{(snap.CopiesTaken == 1 ? "y" : "ies")} " +
+                  "(the file is damaged, or the browser kept writing to it while it was copied)";
         try
         {
             var r = carve();
-            warnings.Add($"{who}: the history file {Path.GetFileName(snap.SourcePath)} is damaged and could not be opened. " +
-                         $"{r.Visits.Count} visit{(r.Visits.Count == 1 ? " was" : "s were")} carved from its raw bytes and are marked \"Recovered (deleted)\"; " +
-                         "some of them may not have been deleted. Searches and downloads from this file are not shown.");
-            return r.Visits.Select(v => v with { OriginNote = DamagedNote }).ToList();
+            warnings.Add($"{who}: {why}. {r.Visits.Count} visit{(r.Visits.Count == 1 ? " was" : "s were")} read from the copy's raw bytes and " +
+                         $"{(r.Visits.Count == 1 ? "is" : "are")} marked \"From a damaged copy\": most are probably still in the browser's history, " +
+                         "some may have been deleted. Searches and downloads from this file are not shown.");
+            return r.Visits.Select(v => v with { Origin = Origin.DamagedCopy, OriginNote = null }).ToList();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            warnings.Add($"{who}: the history file {Path.GetFileName(snap.SourcePath)} is damaged and could not be opened or searched: {e.Message.Split('\n')[0].Trim()}");
+            warnings.Add($"{who}: {why}, and its raw bytes could not be searched: {e.Message.Split('\n')[0].Trim()}");
             return [];
         }
+    }
+
+    /// <summary>A copy that opened although it never passed the consistency check: a warning, since rows may be missing.</summary>
+    internal static void WarnInconsistent(BrowserProfile profile, DbSnapshot snap, List<string> warnings)
+    {
+        if (snap.CopyProblem is null) return;
+        warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: no consistent copy of {Path.GetFileName(snap.SourcePath)} could be taken " +
+                     $"in {snap.CopiesTaken} tries ({snap.CopyProblem}); the browser was probably writing to it. Some visits may be missing.");
     }
 
     static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct)
