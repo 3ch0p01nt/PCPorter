@@ -20,11 +20,23 @@
       <TextBlock x:Name="DriveHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,4,0,12" />
 
       <TextBlock Text="Save the results to" FontWeight="SemiBold" />
-      <Grid Margin="0,6,0,16">
+      <Grid Margin="0,6,0,0">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
         <ui:TextBox x:Name="OutFolder" AutomationProperties.Name="Folder to save the results in" />
         <ui:Button Grid.Column="1" Margin="8,0,0,0" Content="Browse..." Click="Browse_Click" AutomationProperties.HelpText="Pick the folder for the results, ideally on your backup drive" />
       </Grid>
+      <StackPanel x:Name="SaveDrivesRow" Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
+        <TextBlock Text="Drives found:" VerticalAlignment="Center" />
+        <ComboBox x:Name="SaveDrives" Margin="8,0,0,0" MinWidth="320" AutomationProperties.Name="Drives found to save the results on" />
+      </StackPanel>
+      <Border x:Name="SystemDriveWarning" Margin="0,6,0,0" Padding="10,8" CornerRadius="4" Visibility="Collapsed"
+              Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
+        <DockPanel>
+          <ui:SymbolIcon Symbol="Warning24" Foreground="{DynamicResource SystemFillColorCautionBrush}" Margin="0,0,8,0" VerticalAlignment="Top" />
+          <TextBlock x:Name="SystemDriveWarningText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+        </DockPanel>
+      </Border>
+      <Border Height="16" />
       </StackPanel>
 
       <StackPanel Orientation="Horizontal">

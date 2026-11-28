@@ -26,8 +26,7 @@ public partial class ThumbsPage : Page
     {
         InitializeComponent();
         var memory = Remembered.Pages.Get(MemoryKey);
-        if (string.IsNullOrWhiteSpace(memory.SaveFolder)) _ = WindowsDrives.SuggestSaveFolderAsync(() => OutFolder.Text, s => OutFolder.Text = s);
-        else OutFolder.Text = memory.SaveFolder;
+        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, memory.SaveFolder);
         Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
         AllUsers.IsEnabled = _elevated;
         if (!_elevated) { AllUsers.IsChecked = false; AllUsers.ToolTip = "Needs PCPorter to run as administrator."; }
@@ -117,7 +116,7 @@ public partial class ThumbsPage : Page
         StartButton.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
         Busy.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        OutFolder.IsEnabled = WebCaches.IsEnabled = FullIndex.IsEnabled = !busy;
+        OutFolder.IsEnabled = SaveDrives.IsEnabled = WebCaches.IsEnabled = FullIndex.IsEnabled = !busy;
         AllUsers.IsEnabled = !busy && _elevated;
     }
 

@@ -43,6 +43,58 @@ public class CaseFolderTests : IDisposable
         Assert.DoesNotContain(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), fileSids);
     }
 
+    [Theory]
+    [InlineData("exFAT")]
+    [InlineData("FAT32")]
+    public void A_drive_without_permissions_gets_plain_folders_and_a_warning(string format)
+    {
+        // Setting an ACL on exFAT/FAT32 fails; the probe plays that drive, so no ACL call may be made.
+        var probed = new List<string>();
+        VolumeFormat? Fat(string path) { probed.Add(path); return new VolumeFormat(format, KeepsPermissions: false); }
+        var a = CaseFolder.Create(_root, Now, "BOB-PC", NoEnv, Fat);
+
+        Assert.True(Directory.Exists(a.Path));
+        Assert.False(new DirectoryInfo(a.Path).GetAccessControl().AreAccessRulesProtected);      // inherited: no ACL was set
+        Assert.False(new DirectoryInfo(Path.Combine(_root, "PCPorter")).GetAccessControl().AreAccessRulesProtected);
+        var warning = Assert.Single(a.Warnings);
+        Assert.Contains(format, warning);
+        Assert.Contains("Anyone with the drive can open the case", warning);
+        Assert.Contains(a.Path, probed);
+    }
+
+    [Fact]
+    public void An_ntfs_drive_gets_the_private_acl_and_no_warning()
+    {
+        var a = CaseFolder.Create(_root, Now, "BOB-PC", NoEnv, _ => new VolumeFormat("NTFS", KeepsPermissions: true));
+        Assert.Empty(a.Warnings);
+        Assert.True(new DirectoryInfo(a.Path).GetAccessControl().AreAccessRulesProtected);
+    }
+
+    [Fact]
+    public void The_real_probe_reads_the_temp_drive_as_ntfs()
+    {
+        var f = CaseFolder.FormatOf(_root);
+        Assert.NotNull(f);
+        Assert.Equal(f.Name is "NTFS" or "ReFS", f.KeepsPermissions);
+    }
+
+    [Fact]
+    public void The_work_folder_is_per_case_in_pcporters_own_folder_not_in_the_case()
+    {
+        var a = CaseFolder.Create(_root, Now, "BOB-PC", NoEnv);
+        var work = CaseFolder.CreateWork(a.Path);
+        try
+        {
+            Assert.Equal(Path.Combine(PCPorter.Core.Security.AppFolders.For("work"), Path.GetFileName(a.Path)), work);
+            Assert.False(work.StartsWith(_root, StringComparison.OrdinalIgnoreCase));
+            Assert.True(new DirectoryInfo(work).GetAccessControl().AreAccessRulesProtected);
+            var allowed = new DirectoryInfo(work).GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>().Select(r => r.IdentityReference).Cast<SecurityIdentifier>().ToHashSet();
+            Assert.DoesNotContain(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), allowed);
+        }
+        finally { Directory.Delete(work, true); }
+    }
+
     [Fact]
     public void Synced_folder_is_rejected()
     {

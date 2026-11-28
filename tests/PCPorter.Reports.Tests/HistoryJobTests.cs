@@ -140,6 +140,7 @@ public sealed class HistoryJobTests : IDisposable
         Assert.True(File.Exists(r.ReportPath));
         Assert.Equal("History.html", Path.GetFileName(r.ReportPath));
         Assert.False(Directory.Exists(Path.Combine(r.CaseFolder, "work")));
+        Assert.False(Directory.Exists(CaseFolder.WorkFolderFor(r.CaseFolder)));
 
         Assert.Equal(5, r.Scan.Visits.Count);
         Assert.Equal(["tea", "green tea"], r.Scan.Searches.Select(s => s.Terms));
@@ -184,20 +185,26 @@ public sealed class HistoryJobTests : IDisposable
         var progress = new SyncProgress(_ =>
         {
             if (held is not null) return;
-            var work = Directory.GetDirectories(_out, "work", SearchOption.AllDirectories).Single();
-            held = new FileStream(Path.Combine(work, "held-open"), FileMode.CreateNew, FileAccess.Write, FileShare.None);   // e.g. a scanner holds a copy
+            var work = CaseFolder.WorkFolderFor(Directory.GetDirectories(Path.Combine(_out, "PCPorter")).Single());
+            Assert.True(Directory.Exists(work));
+            held =new FileStream(Path.Combine(work, "held-open"), FileMode.CreateNew, FileAccess.Write, FileShare.None);   // e.g. a scanner holds a copy
         });
         try
         {
             var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), progress, Now);
 
-            var work = Path.Combine(r.CaseFolder, "work");
+            var work = CaseFolder.WorkFolderFor(r.CaseFolder);
             Assert.True(Directory.Exists(work));
             Assert.Contains(r.Scan.Warnings, w => w.Contains(work, StringComparison.OrdinalIgnoreCase) && w.Contains("could not be deleted"));
             Assert.Contains(work, File.ReadAllText(r.ReportPath).Replace(@"\\", @"\"), StringComparison.OrdinalIgnoreCase);
             Assert.Equal(PCPorter.Core.Cli.ExitCodes.Partial, HistoryJob.ExitCode(r));
         }
-        finally { held?.Dispose(); }
+        finally
+        {
+            held?.Dispose();
+            foreach (var c in Directory.GetDirectories(Path.Combine(_out, "PCPorter")))     // the left-over work folder is outside _out
+                try { Directory.Delete(CaseFolder.WorkFolderFor(c), true); } catch (DirectoryNotFoundException) { }
+        }
     }
 
     [Fact]

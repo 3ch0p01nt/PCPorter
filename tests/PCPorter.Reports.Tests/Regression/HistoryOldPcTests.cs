@@ -69,6 +69,7 @@ public sealed class HistoryOldPcTests : IDisposable
 
         Assert.True(File.Exists(r.ReportPath));
         Assert.False(Directory.Exists(Path.Combine(r.CaseFolder, "work")));
+        Assert.False(Directory.Exists(CaseFolder.WorkFolderFor(r.CaseFolder)));
         using var db = CaseDb.Open(Path.Combine(r.CaseFolder, "case.db"));
         var counts = db.CountByCategory();
         Assert.Equal(s.Visits.Count, counts["WebHistory.Visit"]);
