@@ -38,12 +38,12 @@ public sealed class GameLibraries
         foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var mapped = source.MapPath(root);
-            if (mapped is null || !Directory.Exists(mapped)) continue;
+            if (mapped is null || !SourcePresence.IsFolder(mapped)) continue;
             AddLibrary(libraries, root);
             foreach (var vdfName in new[] { @"steamapps\libraryfolders.vdf", @"config\libraryfolders.vdf" })
             {
                 var vdf = Path.Combine(mapped, vdfName);
-                if (!File.Exists(vdf)) continue;
+                if (!SourcePresence.IsFile(vdf)) continue;
                 try
                 {
                     var lf = Vdf.Parse(ReadText(vdf));

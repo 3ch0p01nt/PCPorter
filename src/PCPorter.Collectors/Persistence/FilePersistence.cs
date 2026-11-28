@@ -107,7 +107,7 @@ public static class FilePersistence
         {
             var scanned = @"%SystemRoot%\System32\" + tool;
             var mapped = source.MapPath(scanned);
-            if (mapped is null || !File.Exists(mapped)) continue;
+            if (mapped is null || !SourcePresence.IsFile(mapped)) continue;
             list.Add(new PersistenceEntry("Accessibility tools", tool, scanned, EntryKind.Accessibility) { LastWrite = LastWrite(mapped) });
         }
     }

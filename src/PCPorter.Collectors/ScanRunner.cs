@@ -53,8 +53,16 @@ public sealed class ScanRunner
             try
             {
                 var output = c.Run(context, limit.Token);
-                run = new CollectorRun(c.Name, output.Status, output.Items.Count, sw.ElapsedMilliseconds,
-                    output.Notes.Count == 0 ? null : Redactor.Redact(string.Join(" ", output.Notes)), output);
+                var notes = output.Notes.Count == 0 ? null : Redactor.Redact(string.Join(" ", output.Notes));
+                // Collectors that watch the token return "Cancelled" themselves; only the user's token makes that a cancel.
+                if (output.Status == CollectorStatus.Cancelled && !ct.IsCancellationRequested)
+                {
+                    bool timedOut = limit.IsCancellationRequested;
+                    context.Warnings.Add(timedOut ? TimedOutWarning(c.Name) : $"{c.Name} stopped before it finished.");
+                    output = output with { Status = timedOut ? CollectorStatus.TimedOut : CollectorStatus.Failed };
+                    notes = string.Join(" ", new[] { timedOut ? "Took too long and was stopped." : "Stopped before it finished.", notes }.Where(n => n is not null));
+                }
+                run = new CollectorRun(c.Name, output.Status, output.Items.Count, sw.ElapsedMilliseconds, notes, output);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -62,7 +70,7 @@ public sealed class ScanRunner
             }
             catch (OperationCanceledException) when (limit.IsCancellationRequested)
             {
-                context.Warnings.Add($"{c.Name} took longer than {_limit.TotalMinutes:0} minutes and was stopped.");
+                context.Warnings.Add(TimedOutWarning(c.Name));
                 run = new CollectorRun(c.Name, CollectorStatus.TimedOut, 0, sw.ElapsedMilliseconds, "Took too long and was stopped.", null);
             }
             catch (Exception ex)
@@ -75,6 +83,10 @@ public sealed class ScanRunner
         }
         return new ScanRunResult(runs);
     }
+
+    string TimedOutWarning(string name) =>
+        _limit.TotalMinutes >= 1 ? $"{name} took longer than {_limit.TotalMinutes:0} minutes and was stopped."
+            : $"{name} took longer than {_limit.TotalSeconds:0.#} seconds and was stopped.";
 }
 
 /// <summary>For offline scans: WMI describes the PC running PCPorter, never the scanned drive, so it is switched off.</summary>

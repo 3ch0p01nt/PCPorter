@@ -25,6 +25,9 @@ public sealed class OfflineSource : ISystemSource
     public OfflineSource(string readRoot, string? runningWindowsDrive = null)
     {
         ReadRoot = readRoot.EndsWith('\\') ? readRoot : readRoot + "\\";
+        // Opening the drive happens before a scan confines file access: confine here too, so a planted link (for
+        // example Windows\System32 pointing at a network share) is refused instead of followed.
+        using var confine = SourceFiles.Confine(ReadRoot);
 
         // Refuse the running Windows however it is reached (C:\, \\?\C:\, \\.\C:\, volume GUID, subst, mounted folder,
         // shadow copy): compare the real identity (volume serial + file index) of the System32 folders, which every
@@ -35,11 +38,12 @@ public sealed class OfflineSource : ISystemSource
         var runningId = FileIdentity.Identity(Path.Combine(running, "System32"));
         if (runningId is null && runningWindowsDrive is null)
             throw new SourceRejectedException("PCPorter could not tell which Windows is running, so it will not scan another drive.");
-        if (runningId is not null && FileIdentity.Identity(Path.Combine(ReadRoot, "Windows", "System32")) == runningId)
+        var system32 = Path.Combine(ReadRoot, "Windows", "System32");
+        if (runningId is not null && SourcePresence.IsFolder(system32) && FileIdentity.Identity(system32) == runningId)
             throw new SourceRejectedException("That is the Windows you are running now. Use a normal scan for this PC.");
 
         var hive = Path.Combine(ReadRoot, "Windows", "System32", "config", "SOFTWARE");
-        if (!File.Exists(hive))
+        if (!SourcePresence.IsFile(hive))
             throw new SourceRejectedException($"No Windows installation was found on {ReadRoot} (or it can only be read with administrator rights).");
 
         var cv = OpenHive(Hive.Software)?.Open(@"Microsoft\Windows NT\CurrentVersion");
@@ -69,7 +73,7 @@ public sealed class OfflineSource : ISystemSource
         if (file is null) return null;
         if (!_hives.TryGetValue(file, out var parsed))
         {
-            parsed = File.Exists(file) ? HiveParser.Parse(file) : new ParsedHive(null, false, false, $"{Path.GetFileName(file)} not found{(user is null ? "" : " for " + user.UserName)}.");
+            parsed = SourcePresence.IsFile(file) ? HiveParser.Parse(file) : new ParsedHive(null, false, false, $"{Path.GetFileName(file)} not found{(user is null ? "" : " for " + user.UserName)}.");
             _hives[file] = parsed;
             if (parsed.Problem is not null) _notes.Add(parsed.Problem);
         }

@@ -99,6 +99,60 @@ public class HealthReportTests : IDisposable
     public void A_failed_check_is_called_out()
     {
         var r = Scan(new Fake("Broken", () => throw new IOException("nope")));
-        Assert.Contains("Some checks could not finish", File.ReadAllText(r.ReportPath!));
+        var html = File.ReadAllText(r.ReportPath!);
+        Assert.Contains("Some checks could not finish", html);
+        Assert.Contains("<h1>Incomplete check</h1>", html);               // never "Looks good" when a part is missing
+        Regression.ReportInvariants.AssertHolds(html);
+    }
+
+    static string Html(ScanJobResult r) => File.ReadAllText(r.ReportPath!);
+
+    [Fact]
+    public void A_stopped_scan_never_says_looks_good_and_marks_the_unfinished_list()
+    {
+        using var cts = new CancellationTokenSource();
+        var r = ScanJob.Run(_out, new ScanJobOptions(), _ =>
+        [
+            new Fake("Settings", () => new("posture", [new PostureCheck("uac", "User Account Control", PostureStatus.Good, PostureSeverity.Info, "On.", "", "")], [])),
+            new Fake("Startup", () => { cts.Cancel(); return new("persistence", [Startup("helper", Severity.Info, "helper.exe")], [], CollectorStatus.Cancelled); }),
+            new Fake("Apps", () => new("apps", [], [])),
+        ], ct: cts.Token, writeReport: HealthReport.Write);
+        Assert.True(r.Run.Cancelled);
+        var html = Html(r);
+        Assert.Contains("<h1>Incomplete check</h1>", html);
+        Assert.DoesNotContain("Looks good", html);
+        Assert.DoesNotContain("didn't find anything", html);
+        Assert.Contains("The scan was stopped early", html);
+        var startup = html[html.IndexOf("<h3>Programs that start with Windows</h3>")..html.IndexOf("id=\"moving\"")];
+        Assert.Contains("This list is incomplete", startup);                // the startup check was stopped part-way
+        var moving = html[html.IndexOf("id=\"moving\"")..html.IndexOf("id=\"hardware\"")];
+        Assert.Contains("did not run", moving);                           // never started
+        Regression.ReportInvariants.AssertHolds(html);
+    }
+
+    [Fact]
+    public void Findings_in_a_stopped_scan_keep_their_verdict()
+    {
+        using var cts = new CancellationTokenSource();
+        var r = ScanJob.Run(_out, new ScanJobOptions(), _ =>
+        [
+            new Fake("Settings", () => { cts.Cancel(); return new("posture",
+                [new PostureCheck("firewall", "Firewall", PostureStatus.Risk, PostureSeverity.High, "The firewall is off.", "Turn it on.", "")], [], CollectorStatus.Cancelled); }),
+        ], ct: cts.Token, writeReport: HealthReport.Write);
+        var html = Html(r);
+        Assert.Contains("<h1>Needs attention</h1>", html);                // what was found is real
+        Assert.Contains("The scan was stopped early", html);
+        Regression.ReportInvariants.AssertHolds(html);
+    }
+
+    [Fact]
+    public void A_partly_read_check_keeps_looks_good_with_the_partial_line()
+    {
+        var r = Scan(new Fake("Settings", () => new("posture",
+            [new PostureCheck("uac", "User Account Control", PostureStatus.Good, PostureSeverity.Info, "On.", "", "")], ["1 check could not be read."], CollectorStatus.Partial)));
+        var html = Html(r);
+        Assert.Contains("<h1>Looks good</h1>", html);
+        Assert.Contains("Nothing stood out in the parts we could check.", html);
+        Assert.Contains("Some checks could not finish", html);
     }
 }

@@ -20,9 +20,10 @@ public static class SyntheticPcs
         public CollectorOutput Run(CollectorContext context, CancellationToken ct) => run();
     }
 
-    public sealed record Pc(string Name, IReadOnlyList<ICollector> Collectors, bool Offline = false);
+    /// <param name="Stop">Cancelled by a collector to play the user pressing Stop mid-scan; the harness passes its token.</param>
+    public sealed record Pc(string Name, IReadOnlyList<ICollector> Collectors, bool Offline = false, CancellationTokenSource? Stop = null);
 
-    public static IEnumerable<Pc> All() => [Clean(), LooksInfected(), NoProtection(), FailingHardware(), PartialScan(), DeadDriveOffline()];
+    public static IEnumerable<Pc> All() => [Clean(), LooksInfected(), NoProtection(), FailingHardware(), PartialScan(), DeadDriveOffline(), StoppedEarly()];
 
     // ---------- building blocks ----------
     static ICollector Out(string name, string kind, params IScanItem[] items) => new Fixed(name, () => new CollectorOutput(kind, items, []));
@@ -122,6 +123,25 @@ public static class SyntheticPcs
         new Fixed("Antivirus", () => throw new IOException("Security Center did not answer")),
         new Fixed("Security settings", () => new CollectorOutput("posture", AllGood, ["2 checks could not be read."], CollectorStatus.Partial)),
     ]);
+
+    /// <summary>The user pressed Stop while startup programs were being read: what was found so far is kept, the apps check never ran.</summary>
+    public static Pc StoppedEarly()
+    {
+        var stop = new CancellationTokenSource();
+        return new("stopped-early",
+        [
+            Out("PC profile and health", "profile", HealthyProfile("HOME-PC")),
+            Out("Antivirus", "av", Av("defender", "Microsoft Defender", WscState.On, microsoft: true)),
+            Out("Security settings", "posture", AllGood),
+            new Fixed("Programs that start automatically", () =>
+            {
+                stop.Cancel();
+                return new CollectorOutput("persistence", [Startup("OneDrive", Severity.Info, @"C:\Program Files\Microsoft OneDrive\OneDrive.exe /background", "Microsoft Corporation")],
+                    [], CollectorStatus.Cancelled);
+            }),
+            Out("Installed apps", "apps", App("7-Zip", "26.06", "Igor Pavlov", "7zip.7zip")),
+        ], Stop: stop);
+    }
 
     /// <summary>A dead PC's drive: no WMI data, antivirus found only by its files (state unknown).</summary>
     public static Pc DeadDriveOffline() => new("dead-drive-offline",

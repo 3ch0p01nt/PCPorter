@@ -22,12 +22,12 @@ public sealed class OfflineVolumeFinder
 
     readonly IWmiClient _wmi;
     readonly Func<IEnumerable<string>> _drives;
-    readonly Func<string, bool> _fileExists;
+    readonly Func<string, bool>? _fileExists;
     readonly string _runningWindowsDrive;
     readonly Func<string, (string? OsName, string? Build)> _readOs;
 
     /// <param name="drives">Drive roots like "D:\"; defaults to this PC's ready fixed/removable drives.</param>
-    /// <param name="fileExists">Defaults to <see cref="File.Exists"/>.</param>
+    /// <param name="fileExists">Defaults to a check confined to the drive that never follows a link (see <see cref="SourcePresence"/>).</param>
     /// <param name="runningWindowsDrive">Defaults to the drive of the running Windows.</param>
     /// <param name="readOs">Reads OS name/build from a root; defaults to <see cref="ReadOs"/> via <see cref="OfflineSource"/>.</param>
     public OfflineVolumeFinder(IWmiClient wmi, Func<IEnumerable<string>>? drives = null, Func<string, bool>? fileExists = null,
@@ -35,7 +35,7 @@ public sealed class OfflineVolumeFinder
     {
         _wmi = wmi;
         _drives = drives ?? DefaultDrives;
-        _fileExists = fileExists ?? File.Exists;
+        _fileExists = fileExists;
         _runningWindowsDrive = NormalizeRoot(runningWindowsDrive ?? Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? "C:\\")!;
         _readOs = readOs ?? ReadOs;
     }
@@ -50,7 +50,8 @@ public sealed class OfflineVolumeFinder
         {
             var root = NormalizeRoot(raw);
             if (root is null || IsRunning(root) || !seenRoots.Add(root)) continue;
-            if (!_fileExists(Path.Combine(root, "Windows", "System32", "config", "SOFTWARE"))) continue;
+            var software = Path.Combine(root, "Windows", "System32", "config", "SOFTWARE");
+            if (!(_fileExists?.Invoke(software) ?? ExistsOnDrive(root, software))) continue;
             try
             {
                 var (os, build) = _readOs(root);
@@ -113,6 +114,16 @@ public sealed class OfflineVolumeFinder
         string s when long.TryParse(s, out var x) => x,
         _ => null,
     };
+
+    /// <summary>
+    /// The drive picker looks at every attached drive before anything is chosen: a "Windows" folder that is really a
+    /// link (possibly to a network share) on a USB stick must not be followed just by listing drives.
+    /// </summary>
+    static bool ExistsOnDrive(string root, string path)
+    {
+        using var confine = Sources.SourceFiles.Confine(root);
+        return SourcePresence.IsFile(path);
+    }
 
     bool IsRunning(string root) => string.Equals(root, _runningWindowsDrive, StringComparison.OrdinalIgnoreCase);
 

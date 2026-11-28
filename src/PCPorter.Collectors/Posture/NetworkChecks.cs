@@ -175,7 +175,7 @@ public static class NetworkChecks
         var ev = $"DataBasePath={dbPath ?? "(not set)"}{(movedFolder ? " (not the default)" : "")}";
 
         List<(string Ip, string Host)>? entries = null;
-        if (mapped is not null && File.Exists(mapped))
+        if (mapped is not null && SourcePresence.IsFile(mapped))
         {
             try { entries = ReadHosts(mapped); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { ev += $"; hosts unreadable ({e.GetType().Name})"; }

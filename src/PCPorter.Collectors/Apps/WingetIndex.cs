@@ -124,12 +124,17 @@ public sealed class WingetIndex : IDisposable
     {
         why = null;
         var apps = System.IO.Path.Combine(source.ReadRoot, "Program Files", "WindowsApps");
+        switch (SourcePresence.Of(apps))   // never through a link (it may point at a network share)
+        {
+            case Presence.Missing: why = "winget's package list was not found on this PC."; return null;
+            case Presence.NotFollowed: why = "winget's package list leads outside the scanned drive; it was not read."; return null;
+        }
         if (!Directory.Exists(apps)) { why = "winget's package list was not found on this PC."; return null; }
         try
         {
             var newest = Directory.EnumerateDirectories(apps, "Microsoft.Winget.Source_*")
                 .Select(d => (Dir: d, Version: VersionOf(System.IO.Path.GetFileName(d))))
-                .Where(x => x.Version is not null && File.Exists(System.IO.Path.Combine(x.Dir, "Public", "index.db")))
+                .Where(x => x.Version is not null && SourcePresence.IsFile(System.IO.Path.Combine(x.Dir, "Public", "index.db")))
                 .OrderByDescending(x => x.Version).FirstOrDefault();
             if (newest.Dir is null) { why = "winget's package list was not found on this PC."; return null; }
             var file = System.IO.Path.Combine(newest.Dir, "Public", "index.db");
@@ -161,7 +166,7 @@ public sealed class WingetIndex : IDisposable
                 var file = System.IO.Path.Combine(home, AppInstallerState, folder, "installed.db");
                 try
                 {
-                    if (!File.Exists(file) || !SourceFiles.IsInside(file)) continue;
+                    if (!SourcePresence.IsFile(file)) continue;   // inside the drive, no link on the way, then exists
                     list.Add(new WingetIndex(file, src, tracking: true));
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException or SqliteException or InvalidDataException)

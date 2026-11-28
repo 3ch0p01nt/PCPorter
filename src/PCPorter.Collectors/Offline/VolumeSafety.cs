@@ -28,6 +28,12 @@ public static class VolumeSafety
         var file = Path.Combine(root, "hiberfil.sys");
         try
         {
+            using var confine = SourceFiles.Confine(root);   // a link planted in its place is never followed
+            switch (SourcePresence.Of(file))
+            {
+                case Presence.Missing: return false;
+                case Presence.NotFollowed: return null;
+            }
             if (!File.Exists(file)) return false;
             using var stream = SourceFiles.OpenRead(file);
             Span<byte> header = stackalloc byte[4];

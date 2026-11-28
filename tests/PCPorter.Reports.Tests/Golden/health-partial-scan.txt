@@ -1,7 +1,7 @@
-✓
+i
 PC health and security · WORK-PC
-Looks good
-Nothing stood out in the parts we could check.
+Incomplete check
+Nothing stood out in the parts we could check. Some checks did not finish, so this is not a full check.
 0 worth a look
 0 unusual
 0 apps to reinstall
@@ -9,7 +9,7 @@ Scanned <time>
 Some checks could not finish, so parts of this report are missing. See Technical details at the end.
 Worth checking when you have time
 Nothing here is urgent.
-Nothing to do. Keep Windows updated and your backups running.
+Nothing to do in the parts we could check. Run the scan again to check the rest.
 Security
 Antivirus
 [Note] Antivirus: We couldn't check the antivirus.

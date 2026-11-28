@@ -33,6 +33,12 @@ public sealed class AuthenticodeChecker : ISignatureChecker, IDisposable
 
     public SignatureInfo Check(string path)
     {
+        // A link on the scanned drive is never followed (it may point at a network share): unknown, not "missing".
+        switch (SourcePresence.Of(path))
+        {
+            case Presence.Missing: return new SignatureInfo(SignatureStatus.FileMissing, null, false);
+            case Presence.NotFollowed: return new SignatureInfo(SignatureStatus.NotChecked, null, false);
+        }
         FileInfo fi;
         try
         {

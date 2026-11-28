@@ -32,7 +32,7 @@ public static class CrashHistory
         else
         {
             var mapped = src.MapPath(src.OriginalSystemDrive + @"\Windows\System32\winevt\Logs\System.evtx");
-            if (mapped is null || !File.Exists(mapped))
+            if (mapped is null || !SourcePresence.IsFile(mapped))
             {
                 warnings.Add("Profile: the old PC's System event log was not found; crash history is unknown.");
                 logOrFile = "";
@@ -81,6 +81,11 @@ public static class CrashHistory
     {
         var dir = src.MapPath(src.OriginalSystemDrive + @"\Windows\Minidump");
         if (dir is null) return (null, null);
+        switch (SourcePresence.Of(dir))
+        {
+            case Presence.Missing: return (0, null);
+            case Presence.NotFollowed: return (null, null);   // a link: never listed (it may point at a network share)
+        }
         if (!Directory.Exists(dir)) return (0, null);
         try
         {

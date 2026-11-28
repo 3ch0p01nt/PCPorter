@@ -80,6 +80,39 @@ public class ScanRunnerTests
     }
 
     [Fact]
+    public void A_collector_that_returns_cancelled_at_its_time_limit_is_timed_out_not_cancelled()
+    {
+        // Real collectors check the token and return what they found with status Cancelled instead of throwing.
+        var ctx = Ctx();
+        var after = new Fake("after", _ => Ok(1));
+        var slow = new Fake("slow", ct => { ct.WaitHandle.WaitOne(); return new CollectorOutput("k", [new Item("half")], ["stopped"], CollectorStatus.Cancelled); });
+        var r = new ScanRunner([slow, after], TimeSpan.FromMilliseconds(200)).Run(ctx);
+        Assert.Equal([CollectorStatus.TimedOut, CollectorStatus.Ok], r.Runs.Select(x => x.Status));
+        Assert.False(r.Cancelled);
+        Assert.Equal("partial", r.Overall);
+        Assert.Equal(1, after.Calls);
+        Assert.Equal(1, r.Runs[0].Items);                                  // what it found before the limit is kept
+        Assert.Contains(ctx.Warnings, w => w.Contains("slow took longer than", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_collector_that_returns_cancelled_because_the_user_cancelled_stays_cancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        var ctx = Ctx();
+        var r = new ScanRunner([new Fake("one", ct => { cts.Cancel(); return new CollectorOutput("k", [], [], CollectorStatus.Cancelled); })])
+            .Run(ctx, ct: cts.Token);
+        Assert.Equal(CollectorStatus.Cancelled, r.Runs[0].Status);
+        Assert.True(r.Cancelled);
+        Assert.Empty(ctx.Warnings);
+    }
+
+    [Fact]
+    public void A_collector_that_says_cancelled_when_nothing_was_cancelled_is_a_failure() =>
+        Assert.Equal(CollectorStatus.Failed,
+            new ScanRunner([new Fake("liar", _ => new CollectorOutput("k", [], [], CollectorStatus.Cancelled))]).Run(Ctx()).Runs[0].Status);
+
+    [Fact]
     public void Warnings_are_redacted_and_duplicate_names_are_refused()
     {
         var ctx = Ctx();
