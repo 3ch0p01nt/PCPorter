@@ -17,8 +17,31 @@ public sealed record ScanJobOptions(
     TimeSpan? PerCollectorLimit = null,
     DateTimeOffset? Now = null);                // fixed "now" for date-based checks (tests); null = the real clock
 
+/// <summary>How a finished scan went: one decision for the report, the app page, the CLI exit code and case.db.</summary>
+public enum ScanOutcome
+{
+    /// <summary>Every part was checked.</summary>
+    Ok,
+    /// <summary>An offline scan where every part ran: all a drive can tell was read, but antivirus state and hardware
+    /// health only exist on a running PC. Not a problem, and not a full check either (status "partial", exit 1).</summary>
+    OkWithLimits,
+    /// <summary>A part failed, ran out of time or could only read some of its data.</summary>
+    Partial,
+    /// <summary>The user stopped the scan.</summary>
+    Cancelled,
+}
+
 public sealed record ScanJobResult(string CaseFolder, string ScanId, ScanRunResult Run, IReadOnlyList<string> Warnings,
-    IReadOnlyList<string> SourceNotes, string? ReportPath, string ActivityPath, string? ScannedComputer, bool Offline);
+    IReadOnlyList<string> SourceNotes, string? ReportPath, string ActivityPath, string? ScannedComputer, bool Offline)
+{
+    public ScanOutcome Outcome => ScanJob.OutcomeOf(Run, Offline);
+
+    /// <summary>"ok", "partial" or "cancelled" (case.db and the CLI JSON). An offline scan is never "ok": see <see cref="ScanOutcome.OkWithLimits"/>.</summary>
+    public string Status => ScanJob.StatusOf(Outcome);
+
+    /// <summary>True for an offline scan where every part ran: the app says "checked from the drive" instead of "all parts were checked".</summary>
+    public bool CheckedWithLimits => Outcome == ScanOutcome.OkWithLimits;
+}
 
 /// <summary>
 /// Health &amp; security scan: opens the source first (a bad drive never leaves an empty case), then a private case
@@ -93,7 +116,7 @@ public static partial class ScanJob
                         };
                         File.WriteAllText(Path.Combine(scanDir, kind + ".json"), export.ToJsonString());
                     }
-                    db.FinishScan(scanId, DateTimeOffset.UtcNow, run.Overall);
+                    db.FinishScan(scanId, DateTimeOffset.UtcNow, StatusOf(OutcomeOf(run, !source.IsLive)));
                 });
             }
 
@@ -117,6 +140,33 @@ public static partial class ScanJob
         {
             try { if (Directory.Exists(work)) Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
+    }
+
+    public static ScanOutcome OutcomeOf(ScanRunResult run, bool offline) =>
+        run.Cancelled ? ScanOutcome.Cancelled
+        : run.AnyFailed || run.AnyPartial ? ScanOutcome.Partial
+        : offline ? ScanOutcome.OkWithLimits
+        : ScanOutcome.Ok;
+
+    public static string StatusOf(ScanOutcome o) => o switch { ScanOutcome.Ok => "ok", ScanOutcome.Cancelled => "cancelled", _ => "partial" };
+
+    /// <summary>
+    /// The <c>scan</c> command's exit code. Order: 6 cancelled; 5 findings at the <paramref name="failOn"/> level ("high":
+    /// worth a look or fix this; "unusual": also unusual), which beats partial so --fail-on still reports what an offline
+    /// or partial scan found; 1 partial, including every offline scan (a drive alone cannot show antivirus state or
+    /// hardware health); 0 ok.
+    /// </summary>
+    public static int ExitCode(ScanJobResult r, string? failOn)
+    {
+        var outcome = r.Outcome;
+        if (outcome == ScanOutcome.Cancelled) return PCPorter.Core.Cli.ExitCodes.Cancelled;
+        if (failOn is not null)
+        {
+            var f = Assessment.Of(r).Counts();
+            if (f.WorthALook > 0 || failOn.Equals("unusual", StringComparison.OrdinalIgnoreCase) && f.Unusual > 0)
+                return PCPorter.Core.Cli.ExitCodes.FindingsFound;
+        }
+        return outcome == ScanOutcome.Ok ? PCPorter.Core.Cli.ExitCodes.Ok : PCPorter.Core.Cli.ExitCodes.Partial;
     }
 
     static string UniqueKind(string kind, HashSet<string> used)
