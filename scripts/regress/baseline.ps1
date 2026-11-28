@@ -162,6 +162,7 @@ if ($Accept) {
 }
 
 if ($Case) {
+    if (-not (Test-Path -LiteralPath $Case)) { Write-Host "The case folder $Case does not exist." -ForegroundColor Red; exit 2 }
     if (-not (Test-Path -LiteralPath (Join-Path $Case 'scan'))) { Write-Host "$Case is not a PCPorter case folder (no scan folder)." -ForegroundColor Red; exit 2 }
     $summary = New-Summary $Case $null $null $null
 } else {
@@ -173,12 +174,23 @@ if ($Case) {
     $cases = Join-Path $Root 'cases'
     Write-Host 'Scanning (a few minutes)...'
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $text = (& $Exe scan --out $cases --json --quiet | Out-String)
-    $code = $LASTEXITCODE
+    # PCPorter writes UTF-8. Windows PowerShell 5.1 decodes a program's output with the console code page (437/1252),
+    # which garbles non-ASCII names in the JSON; decode as UTF-8 for this call only.
+    $oldEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+        $text = (& $Exe scan --out $cases --json --quiet | Out-String)
+        $code = $LASTEXITCODE
+    } finally { [Console]::OutputEncoding = $oldEncoding }
     $seconds = [int]$sw.Elapsed.TotalSeconds
     $scanOut = try { $text | ConvertFrom-Json } catch { $null }
-    if (-not $scanOut -or -not $scanOut.summary.casePath) { Write-Host "The scan gave no summary (exit code $code). Output:`n$text" -ForegroundColor Red; exit 2 }
-    $summary = New-Summary $scanOut.summary.casePath $scanOut $seconds $code
+    # The case folder is "caseFolder" in newer builds and "casePath" in older ones.
+    $caseDir = if ($scanOut) { @($scanOut.summary.caseFolder, $scanOut.summary.casePath) | Where-Object { $_ } | Select-Object -First 1 } else { $null }
+    if (-not $caseDir) { Write-Host "The scan gave no summary (exit code $code). Output:`n$text" -ForegroundColor Red; exit 2 }
+    if (-not (Test-Path -LiteralPath (Join-Path $caseDir 'scan'))) {
+        Write-Host "The scan reported the case folder $caseDir, but it (or its scan folder) does not exist (exit code $code). Nothing to summarize." -ForegroundColor Red; exit 2
+    }
+    $summary = New-Summary $caseDir $scanOut $seconds $code
 }
 
 $json = $summary | ConvertTo-Json -Depth 6
