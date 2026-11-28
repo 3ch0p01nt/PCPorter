@@ -71,7 +71,7 @@ public static class ThumbnailJob
             foreach (var src in sources)
             {
                 var profile = Path.GetFullPath(Path.Combine(src.ExplorerFolder, "..", "..", "..", "..", ".."));
-                var ctx = new ImageSourceContext(src.User, profile, warnings);
+                var ctx = new ImageSourceContext(src.User, profile, warnings, notes);
                 foreach (var source in options.ExtraSources)
                 {
                     ct.ThrowIfCancellationRequested();

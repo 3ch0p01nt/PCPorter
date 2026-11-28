@@ -31,13 +31,15 @@ public sealed record ImageEvidence(
     string? TimeMeaning,
     byte[]? ImageBytes,                  // null when the source only records a path (e.g. recent files)
     string? ContentType = null,          // e.g. "image/png"
-    string? Note = null);
+    string? Note = null,
+    uint? VolumeSerial = null);          // serial of the volume the original was on, when the record saved it (shortcuts)
 
 /// <summary>Context passed to every image source.</summary>
 public sealed record ImageSourceContext(
     string User,
     string ProfileFolder,                // e.g. C:\Users\bob (or the same folder on an offline drive)
-    IList<string> Warnings);
+    IList<string> Warnings,
+    IList<string>? Notes = null);        // report notes (not problems), e.g. "3 pictures are stored only online"
 
 /// <summary>A source of image evidence (browser cache, screenshots, recent files...). Must be read-only.</summary>
 public interface IImageEvidenceSource

@@ -50,9 +50,30 @@ internal static class ImageFiles
         return null;
     }
 
-    /// <summary>Opens a file read-only without blocking anyone else who has it open.</summary>
-    public static FileStream OpenShared(string path) =>
-        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+    // Reading these makes Windows download the file (OneDrive and other cloud-files placeholders) or recall it from storage.
+    const FileAttributes RecallAttributes = FileAttributes.Offline | (FileAttributes)0x40000 /* RECALL_ON_OPEN */ | (FileAttributes)0x400000 /* RECALL_ON_DATA_ACCESS */;
+
+    /// <summary>
+    /// True when the file's data is not on this PC (a cloud-only placeholder or an offline file), so reading it would
+    /// download it. Checked from the entry's own attributes, which never triggers a download.
+    /// </summary>
+    public static bool IsCloudOnly(string path) =>
+        PCPorter.Core.IO.FileIdentity.Entry(path) is { } e && (e.Attributes & RecallAttributes) != 0;
+
+    /// <summary>The single report note for <paramref name="count"/> cloud-only files skipped by one source.</summary>
+    public static void AddCloudNote(ImageSourceContext context, string label, int count)
+    {
+        if (count == 0) return;
+        (context.Notes ?? context.Warnings).Add(
+            $"{label} for {context.User}: {count:N0} {(count == 1 ? "picture is" : "pictures are")} stored only online (OneDrive or another cloud service) and {(count == 1 ? "was" : "were")} not downloaded, so {(count == 1 ? "it is" : "they are")} not in the gallery.");
+    }
+
+    /// <summary>Opens a file read-only without blocking anyone else who has it open. Cloud-only files are refused (never downloaded).</summary>
+    public static FileStream OpenShared(string path)
+    {
+        if (IsCloudOnly(path)) throw new IOException($"{Path.GetFileName(path)} is stored only online; it was not downloaded.");
+        return new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+    }
 
     /// <summary>Reads the first <paramref name="count"/> bytes (fewer if the file is shorter).</summary>
     public static byte[] ReadHead(string path, int count)

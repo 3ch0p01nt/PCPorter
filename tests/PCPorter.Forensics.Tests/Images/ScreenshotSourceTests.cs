@@ -74,6 +74,26 @@ public class ScreenshotSourceTests
     }
 
     [Fact]
+    public void Cloud_only_files_are_skipped_with_one_note_counting_them()
+    {
+        using var profile = new TempProfile();
+        profile.Write(@"Pictures\Screenshots\local.png", TinyPng);
+        foreach (var name in new[] { "a.png", "b.png" })
+        {
+            var online = profile.Write(@"OneDrive\Pictures\Screenshots\" + name, TinyPng);
+            File.SetAttributes(online, File.GetAttributes(online) | FileAttributes.Offline);   // stands in for a OneDrive placeholder
+        }
+
+        var ctx = new ImageSourceContext("bob", profile.Folder, new List<string>(), new List<string>());
+        var items = new ScreenshotSource().Collect(ctx).ToList();
+        Assert.Equal("Screenshots folder", Assert.Single(items).Source);
+        Assert.Empty(ctx.Warnings);
+        var note = Assert.Single(ctx.Notes!);
+        Assert.Contains("2 ", note);
+        Assert.Contains("not downloaded", note);
+    }
+
+    [Fact]
     public void Missing_profile_yields_nothing_and_does_not_throw()
     {
         var ctx = new ImageSourceContext("bob", Path.Combine(Path.GetTempPath(), "no-such-" + Guid.NewGuid().ToString("N")), new List<string>());
