@@ -46,8 +46,7 @@
                  AutomationProperties.Name="Results found" />
         <ui:Button x:Name="OpenCase" Margin="0,8,0,0" Appearance="Primary" Content="Open these results" Icon="{ui:SymbolIcon FolderOpen24}"
                    Visibility="Collapsed" IsEnabled="False" Click="OpenCase_Click" />
-        <TextBlock x:Name="CasesStatus" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"
-                   AutomationProperties.Name="Results search status" />
+        <TextBlock x:Name="CasesStatus" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
       </StackPanel>
     </ui:Card>
   </StackPanel>

@@ -30,14 +30,14 @@ public partial class HomePage : Page
 
     // ---- Open results from another PC ----
 
-    async void FindCases_Click(object sender, RoutedEventArgs e) => await Search(OtherPcCases.FindOnDrives, "the connected drives");
+    async void FindCases_Click(object sender, RoutedEventArgs e) => await Search(OtherPcCases.FindOnDrives, "on the connected drives");
 
     async void BrowseCases_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFolderDialog { Title = "Where are the results? (the backup drive, or its PCPorter folder)" };
         if (dlg.ShowDialog() != true) return;
         var folder = dlg.FolderName;
-        await Search(() => OtherPcCases.FindIn(folder), folder);
+        await Search(() => OtherPcCases.FindIn(folder), $"in {folder}");
     }
 
     /// <summary>Looks off the UI thread (a sleeping USB disk can take seconds to answer) and lists what was found.</summary>
@@ -45,7 +45,7 @@ public partial class HomePage : Page
     {
         FindCases.IsEnabled = false;
         OpenCase.IsEnabled = false;
-        Announce($"Looking in {where}...");
+        Announce($"Looking {where}...");
         try
         {
             var found = await Task.Run(find);
@@ -65,7 +65,7 @@ public partial class HomePage : Page
         return found.Cases.Count switch
         {
             0 when locked.Length > 0 => "PCPorter results were found, but they are locked to another account. Start PCPorter as administrator to open them.",
-            0 => $"No PCPorter results were found in {where}. Connect the backup drive and try again, or use \"Look in a folder...\".",
+            0 => $"No PCPorter results were found {where}. Connect the backup drive and try again, or use \"Look in a folder...\".",
             1 => "1 set of results found. Pick it and press \"Open these results\"." + locked,
             var n => $"{n} sets of results found, newest first. Pick one and press \"Open these results\"." + locked,
         };

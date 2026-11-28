@@ -11,8 +11,8 @@ public class OtherPcResultsTests
     [Fact]
     public void Nothing_found_says_what_to_do()
     {
-        var text = HomePage.Summary(new CaseSearch([], []), "the connected drives", elevated: true);
-        Assert.Contains("No PCPorter results were found in the connected drives", text);
+        var text = HomePage.Summary(new CaseSearch([], []), "on the connected drives", elevated: true);
+        Assert.Contains("No PCPorter results were found on the connected drives.", text);
         Assert.Contains("Connect the backup drive", text);
     }
 
