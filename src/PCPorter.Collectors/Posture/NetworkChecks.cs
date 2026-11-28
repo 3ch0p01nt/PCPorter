@@ -142,7 +142,7 @@ public static class NetworkChecks
         if (distinct.Count == 0) return Make.Good(id, title, "DNS (the internet's address book) is provided automatically by the network.", evidence);
         if (unusual.Count == 0) return Make.Good(id, title, "DNS servers are set by hand, to well-known public services or your local network.", evidence);
         return Make.Check(id, title, PostureStatus.Attention, PostureSeverity.Medium,
-            $"DNS (the internet's address book) is set by hand to servers we do not recognise ({string.Join(", ", unusual)}).",
+            $"DNS (the internet's address book) is set by hand to servers we do not recognize ({string.Join(", ", unusual)}).",
             "If you or your IT team did not choose these, set DNS back to automatic in Settings > Network & internet > your connection > DNS server assignment.", evidence);
     }
 

@@ -157,7 +157,7 @@ public static class HealthReport
                 h.Append($"<tr><td>{E(app.Name)}</td><td>{E(app.Publisher)}</td><td>{E(app.Version)}{(copies > 1 ? $" <span class=\"muted\">({copies} versions installed)</span>" : "")}</td><td>{HowToGet(app)}</td></tr>");
             h.Append("</tbody></table></details>");
         }
-        h.Append("<p class=\"muted\">Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.</p></section>");
+        h.Append("<p class=\"muted\">When you set up your new PC, install these apps fresh from their makers instead of copying them across. That way nothing harmful comes along from this PC.</p></section>");
 
         // 5. Hardware
         h.Append("<section id=\"hardware\"><h2>Hardware health</h2>");
@@ -215,13 +215,13 @@ public static class HealthReport
         if (a.NoAntivirus)
             list.Add(new(100, "Turn on antivirus", "No antivirus reported itself as active.", "Open Settings > Privacy & security > Windows Security and turn on Virus & threat protection."));
         foreach (var d in a.Profile?.PhysicalDisks?.Where(Assessment.DiskNeedsCare) ?? [])
-            list.Add(new(95, $"Back up now: {d.Name ?? "a drive"} is wearing out", DiskLine(d), "Copy anything important off this PC today. If it gets worse, replace the drive."));
+            list.Add(new(95, $"Back up now: {d.Name ?? "a drive"} may fail soon", DiskLine(d), "Copy your important files to your backup drive today. Then plan to replace this drive."));
         foreach (var p in a.Posture.Where(p => a.LevelOf(p) >= Level.Unusual   // a summary of rows listed one by one is not a to-do
             && (p.Status == PostureStatus.Risk || p.Status == PostureStatus.Attention && p.Severity > PostureSeverity.Info)))   // Info = "no action needed"
             list.Add(new((p.Status == PostureStatus.Risk ? 60 : 20) + (int)p.Severity * 5, p.Title, p.Finding, p.Advice));
         foreach (var group in a.Startup.Where(s => Assessment.OfStartup(s) == Level.WorthALook).GroupBy(s => s.Name))
             list.Add(new(55, $"Check \"{group.Key}\"", group.First().Reason,
-                $"{group.Key} starts with Windows and we couldn't confirm who made it. This is often harmless. If you don't recognize it, look it up or ask someone you trust before removing it."));
+                $"{group.Key} starts with Windows and we couldn't confirm who made it. This is often harmless. Don't delete any files. If you don't recognize the name, search for it online or ask someone you trust. If it turns out to be unwanted, uninstall its program in Settings > Apps."));
         if (a.Profile?.Crashes is { } c && Assessment.OfCrashes(c) == Level.WorthALook)
             list.Add(new(40, "Frequent crashes", $"{c.BugChecks90Days} blue-screen crashes in the last 90 days.", "Install Windows and driver updates. If crashes continue, test the memory and drives."));
         return list;
@@ -232,7 +232,7 @@ public static class HealthReport
         foreach (var s in a.Startup.Where(s => Assessment.OfStartup(s) == Level.WorthALook))
             h.Append(Row(Level.WorthALook, s.Name, s.SignatureStatus == SignatureStatus.FileMissing
                 ? "Leftover entry from an uninstalled program. Harmless."
-                : $"{s.Name} starts with Windows and we couldn't confirm who made it. This is often harmless. If you don't recognize it, look it up or ask someone you trust before removing it.",
+                : $"{s.Name} starts with Windows and we couldn't confirm who made it. This is often harmless. Don't delete any files. If you don't recognize the name, search for it online or ask someone you trust. If it turns out to be unwanted, uninstall its program in Settings > Apps.",
                 $"{s.Reason} Found in {s.Location}: {s.Command}"));
         var unusual = a.Startup.Where(s => Assessment.OfStartup(s) == Level.Unusual).ToList();
         foreach (var g in unusual.GroupBy(s => s.Signer ?? "an unknown maker"))
@@ -310,8 +310,10 @@ public static class HealthReport
             h.Append(Row(lv, name, $"{name} {what}. This usually doesn't matter for moving; check it on the new PC if you use it.",
                 $"Device Manager error code {d.ErrorCode}."));
         }
-        if (p.TpmPresent == false || (p.TpmVersion is { } tv && !tv.StartsWith("2.", StringComparison.Ordinal)))
-            h.Append(Row(Level.Note, "Security chip (TPM)", "TPM 2.0 is not turned on. This is a setting, not broken hardware. It can be turned on in the startup menu (BIOS).", null));
+        if (p.TpmPresent == false)
+            h.Append(Row(Level.Note, "Security chip (TPM)", "The security chip (TPM) is turned off or missing. Nothing to do for moving; your new PC will have one.", null));
+        else if (p.TpmVersion is { } tv && !tv.StartsWith("2.", StringComparison.Ordinal))
+            h.Append(Row(Level.Note, "Security chip (TPM)", $"This PC has an older security chip (TPM {E(tv)}). Windows 11 needs TPM 2.0, so plan on a new PC rather than upgrading this one.", null));
         if (p.SecureBoot == false)
             h.Append(Row(Level.Note, "Secure Boot", "Secure Boot is off. This is a setting, not broken hardware. It can be turned on in the startup menu (BIOS).", null));
         if (p.Activated == false)

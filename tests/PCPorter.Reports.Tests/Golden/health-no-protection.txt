@@ -3,7 +3,7 @@ PC health and security · KIDS-PC
 Needs attention
 A few important things need fixing. The list below says what to do, most important first.
 2 worth a look
-2 unusual
+1 unusual
 1 app to reinstall
 Scanned <time>
 Do these things
@@ -27,9 +27,7 @@ Turn the firewall on in Windows Security.
 [Unusual] Remote Desktop: Remote Desktop is on.
 Why is this here?
 Turn it off if you do not use it.
-[Unusual] Smart App Control: Smart App Control is off.
-Why is this here?
-No action needed; this is the norm on most PCs.
+[Note] Smart App Control: Smart App Control is off, as on most PCs.
 [Unknown] Memory integrity: We cannot tell whether it is on.
 Programs that start with Windows
 No startup programs were found.
@@ -38,7 +36,7 @@ Moving to your new PC
 App list
 App | Maker | Version | How to get it
 Norton 360 | Gen Digital Inc. | 22.1 | Maker's website
-Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+When you set up your new PC, install these apps fresh from their makers instead of copying them across. That way nothing harmful comes along from this PC.
 Hardware health
 16 GB memory · 8 processor threads · x64
 Drives

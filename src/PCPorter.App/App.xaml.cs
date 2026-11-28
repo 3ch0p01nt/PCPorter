@@ -10,17 +10,40 @@ using Serilog;
 
 namespace PCPorter.App;
 
+/// <summary>
+/// The entry point (StartupObject in the project file). It runs before the <see cref="App"/> object exists, because
+/// creating it already loads WPF's native DLLs: a missing one would crash before <c>OnStartup</c> could say why.
+/// </summary>
+public static class Program
+{
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        App.HardenDllSearch();
+        // Started from inside the zip, or a native DLL is gone (antivirus): say what to do in plain words.
+        if (!StartupCheck.Passes(cli: args.Length > 0)) return ExitCodes.Failed;
+
+        var app = new App();
+        app.InitializeComponent();
+        return app.Run();
+    }
+}
+
 public partial class App : Application
 {
     SingleInstance? _singleInstance;
 
     const uint LOAD_LIBRARY_SEARCH_APPLICATION_DIR = 0x200, LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x800;
 
-    protected override void OnStartup(StartupEventArgs e)
+    /// <summary>Elevated app: never load DLLs from the current folder or PATH (DLL hijacking). First thing at start-up.</summary>
+    internal static void HardenDllSearch()
     {
-        // Elevated app: never load DLLs from the current folder or PATH (DLL hijacking).
         SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
         SetDllDirectory("");
+    }
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
         bool cli = e.Args.Length > 0;
 
         if (cli) ConsoleAttach.Apply();   // the caller's console, for each stream that is not redirected

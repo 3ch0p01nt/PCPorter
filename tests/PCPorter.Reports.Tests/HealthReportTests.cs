@@ -96,6 +96,31 @@ public class HealthReportTests : IDisposable
     }
 
     [Fact]
+    public void Smart_App_Control_off_is_a_note_not_unusual()
+    {
+        var r = Scan(new Fake("Settings", () => new("posture",
+        [
+            new PostureCheck(PostureIds.SmartAppControl, "Smart App Control", PostureStatus.Attention, PostureSeverity.Info,
+                "Smart App Control is off, as on most PCs.", "Nothing to do.", ""),
+        ], [])));
+        var a = Assessment.Of(r);
+        Assert.Equal(Level.Note, a.LevelOf(a.Posture.Single()));
+        Assert.DoesNotContain(Level.Unusual, a.Levels());
+        Assert.DoesNotContain(">Unusual</span>", File.ReadAllText(r.ReportPath!));
+    }
+
+    [Fact]
+    public void Tpm_wording_tells_an_old_chip_from_a_missing_one()
+    {
+        string Html(PcProfile p) => File.ReadAllText(Scan(new Fake("Profile", () => new("profile", [p], []))).ReportPath!);
+        Assert.Contains("older security chip (TPM 1.2)", Html(new PcProfile { TpmPresent = true, TpmVersion = "1.2" }));
+        var missing = Html(new PcProfile { TpmPresent = false });
+        Assert.Contains("turned off or missing. Nothing to do for moving", missing);
+        Assert.DoesNotContain("older security chip", missing);
+        Assert.DoesNotContain("Security chip (TPM)", Html(new PcProfile { TpmPresent = true, TpmVersion = "2.0" }));
+    }
+
+    [Fact]
     public void A_failed_check_is_called_out()
     {
         var r = Scan(new Fake("Broken", () => throw new IOException("nope")));

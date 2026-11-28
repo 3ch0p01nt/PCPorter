@@ -61,7 +61,7 @@ public static class SystemChecks
                     "Make sure the PC is enrolled in Extended Security Updates, and plan a move to Windows 11 or a new PC before that date.", evidence),
                 SupportState.Ended => Make.Check(id, title, PostureStatus.Risk, PostureSeverity.Critical,
                     $"{name} no longer gets security updates from Microsoft (support ended {end}).",
-                    "The PC still works, but new security holes will not be fixed. Upgrade Windows (Settings > Windows Update) or move to a new PC; PCPorter can help you move.", evidence),
+                    "The PC still works, but new security holes will not be fixed. Upgrade Windows (Settings > Windows Update) or move to a new PC. This report lists the apps you will need to install again.", evidence),
                 _ => Make.Unknown(id, title, $"We could not match this Windows version to Microsoft's support dates. {v.Reason}", evidence),
             };
         }
@@ -175,12 +175,12 @@ public static class SystemChecks
 
         if (svcStart == 4) return Make.Check(id, title, PostureStatus.Risk, PostureSeverity.High,
             "The Windows Firewall service is switched off.",
-            "This is a setting, not broken hardware. Unless another security product manages the firewall, turn Windows Firewall back on (Windows Security > Firewall & network protection).", evidence);
+            "Unless another security product manages the firewall, turn Windows Firewall back on (Windows Security > Firewall & network protection).", evidence);
         var off = profiles.Where(p => state[p.Key] == false).ToList();
         if (off.Any(p => p.Key is "StandardProfile" or "PublicProfile"))
             return Make.Check(id, title, PostureStatus.Risk, PostureSeverity.High,
                 $"The firewall is off for: {string.Join(", ", off.Select(p => p.Friendly))}.",
-                "This is a setting, not broken hardware. Turn it back on in Windows Security > Firewall & network protection, unless another security product manages your firewall.", evidence);
+                "Turn it back on in Windows Security > Firewall & network protection, unless another security product manages your firewall.", evidence);
         if (off.Count > 0)
             return Make.Check(id, title, PostureStatus.Attention, PostureSeverity.Low,
                 "The firewall is off for work (domain) networks only.",
@@ -205,7 +205,7 @@ public static class SystemChecks
         else if (srvStart is { } sv && sv != 4 && serverValue != 0) reasons.Add("the SMB1 server component is installed and not switched off");
         if (reasons.Count > 0) return Make.Check(id, title, PostureStatus.Risk, PostureSeverity.High,
             $"An old, insecure way of sharing files is enabled: {string.Join("; ", reasons)}.",
-            "Very old network drives or printers may still need it; otherwise turn off 'SMB 1.0/CIFS File Sharing Support' in Windows Features. This is a setting, not broken hardware.", evidence);
+            "Very old network drives or printers may still need it; otherwise turn off 'SMB 1.0/CIFS File Sharing Support' in Windows Features.", evidence);
         return Make.Good(id, title, "The old SMB1 file sharing protocol is off.", evidence);
     }
 
@@ -240,7 +240,7 @@ public static class SystemChecks
         if (lua is null) return Make.Unknown(id, title, "We could not read the User Account Control setting.", evidence);
         if (lua == 0) return Make.Check(id, title, PostureStatus.Risk, PostureSeverity.Critical,
             "User Account Control is switched off, so every program runs with full control of the PC.",
-            "This is a setting, not broken hardware. Turn it back on: search Start for 'Change User Account Control settings', move the slider up, then restart.", evidence);
+            "Turn it back on: search Start for 'Change User Account Control settings', move the slider up, then restart.", evidence);
         if (consent == 0) return Make.Check(id, title, PostureStatus.Risk, PostureSeverity.High,
             "Programs can get administrator rights without asking you first.",
             "Search Start for 'Change User Account Control settings' and choose the default level ('Notify me only when apps try to make changes').", evidence);
@@ -289,8 +289,8 @@ public static class SystemChecks
         {
             1 => Make.Good(id, title, "Smart App Control is on and blocks untrusted apps.", evidence),
             2 => Make.Good(id, title, "Smart App Control is in evaluation mode: Windows is checking whether it suits how you use this PC.", evidence),
-            0 => Make.Check(id, title, PostureStatus.Attention, PostureSeverity.Info, "Smart App Control is off.",
-                "No action needed; this is the norm on most PCs. Switching it on later needs a fresh Windows install, so consider it when setting up your new PC.", evidence),
+            0 => Make.Check(id, title, PostureStatus.Attention, PostureSeverity.Info, "Smart App Control is off, as on most PCs.",
+                "Nothing to do. If you want it, turn it on while setting up your new PC; on this PC it would need a fresh Windows install.", evidence),
             null when s.Build() is { } b && b < 22621 => Make.Check(id, title, PostureStatus.NotApplicable, PostureSeverity.Info,
                 "This version of Windows does not have Smart App Control.", Make.NothingToDo, evidence),
             _ => Make.Unknown(id, title, "We could not tell whether Smart App Control is on.", evidence),

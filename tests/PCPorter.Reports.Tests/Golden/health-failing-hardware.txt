@@ -7,10 +7,10 @@ A few important things need fixing. The list below says what to do, most importa
 0 apps to reinstall
 Scanned <time>
 Do these things
-Back up now: WD Blue is wearing out: Copy anything important off this PC today. If it gets worse, replace the drive.
+Back up now: WD Blue may fail soon: Copy your important files to your backup drive today. Then plan to replace this drive.
 Why is this here?
 This drive reports a problem with its health. Back up now. If it gets worse, replace it.
-Back up now: Kingston SSD is wearing out: Copy anything important off this PC today. If it gets worse, replace the drive.
+Back up now: Kingston SSD may fail soon: Copy your important files to your backup drive today. Then plan to replace this drive.
 Why is this here?
 This drive has used about 95% of its rated life. Back up regularly and plan to replace it.
 Frequent crashes: Install Windows and driver updates. If crashes continue, test the memory and drives.
@@ -27,7 +27,7 @@ Programs that start with Windows
 The startup check did not run.
 Moving to your new PC
 The installed-apps check did not run.
-Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+When you set up your new PC, install these apps fresh from their makers instead of copying them across. That way nothing harmful comes along from this PC.
 Hardware health
 16 GB memory · 8 processor threads · x64
 Drives
@@ -46,7 +46,7 @@ Device Manager error code 45.
 [Unusual] A device without a name: A device without a name can't start. This usually doesn't matter for moving; check it on the new PC if you use it.
 Why is this here?
 Device Manager error code 10.
-[Note] Security chip (TPM): TPM 2.0 is not turned on. This is a setting, not broken hardware. It can be turned on in the startup menu (BIOS).
+[Note] Security chip (TPM): This PC has an older security chip (TPM 1.2). Windows 11 needs TPM 2.0, so plan on a new PC rather than upgrading this one.
 [Note] Secure Boot: Secure Boot is off. This is a setting, not broken hardware. It can be turned on in the startup menu (BIOS).
 [Note] Windows activation: Windows isn't activated. Your new PC will have its own license.
 Technical details

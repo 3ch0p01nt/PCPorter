@@ -179,7 +179,7 @@ public sealed class AvDetector : ICollector
             catch (Exception e) { failed = true; ctx.Warnings.Add($"Antivirus: Defender status failed: {e.Message}"); }
         }
 
-        // 4. Defender exclusions: only when asked, or on a PC that no organisation manages.
+        // 4. Defender exclusions: only when asked, or on a PC that no organization manages.
         try
         {
             bool? domain = src.IsLive ? JoinState.DomainJoinedFromWmi(ctx.Wmi) ?? JoinState.DomainJoinedFromHive(system, ccs) : JoinState.DomainJoinedFromHive(system, ccs);

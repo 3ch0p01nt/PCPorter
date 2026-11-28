@@ -24,6 +24,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Our own Main checks the native DLLs before WPF loads them (App.xaml.cs, StartupCheck) -->
+    <StartupObject>PCPorter.App.Program</StartupObject>
     <AssemblyName>PCPorter</AssemblyName>
     <RootNamespace>PCPorter.App</RootNamespace>
     <Product>PCPorter</Product>

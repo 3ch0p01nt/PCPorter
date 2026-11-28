@@ -78,10 +78,13 @@ public sealed class Assessment
     /// <summary>
     /// A posture row's level in this scan. A summary row whose problems are listed one by one (forced browser
     /// extensions) is only a Note: the individual rows carry the level, so two extensions count as two, not three.
+    /// Smart App Control being off is the norm on most PCs (turning it on needs a fresh Windows install), so it is a
+    /// Note, not "Unusual".
     /// </summary>
     public Level LevelOf(PostureCheck p) =>
         p.Id == PostureIds.BrowserExtensions && p.Status == PostureStatus.Attention
             && Posture.Any(c => c.Id.StartsWith(PostureIds.BrowserExtensionPrefix, StringComparison.Ordinal))
+        || p.Id == PostureIds.SmartAppControl && p.Status == PostureStatus.Attention
             ? Level.Note
             : OfPosture(p);
     public static bool DiskNeedsCare(PhysicalDiskInfo d) =>
