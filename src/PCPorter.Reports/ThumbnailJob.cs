@@ -37,11 +37,11 @@ public static class ThumbnailJob
         var reportFolder = Path.Combine(folder.Path, "Thumbnails");
         CaseFolder.CreatePrivate(reportFolder);
         var imagesFolder = Path.Combine(reportFolder, "thumbs");
-        var work = Path.Combine(folder.Path, "work");
-        CaseFolder.CreatePrivate(work);
+        var work = CaseFolder.WorkFolderFor(folder.Path);   // the search-index copy: on the system drive, not the save drive
         bool reportWritten = false;
         try
         {
+            CaseFolder.CreateWork(folder.Path);
             var result = Collect();
             reportWritten = true;
             return result;

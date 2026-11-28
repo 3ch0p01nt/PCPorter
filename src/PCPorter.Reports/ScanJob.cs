@@ -98,12 +98,12 @@ public static partial class ScanJob
             software?.Open(@"Microsoft\Windows NT\CurrentVersion")?.GetString("CurrentBuild"), source.ReadRoot);
 
         var folder = CaseFolder.Create(outRoot, started, computer ?? (source.IsLive ? Environment.MachineName : "OldPC"));
-        var work = Path.Combine(folder.Path, "work");
+        var work = CaseFolder.WorkFolderFor(folder.Path);              // temporary copies: on the system drive, not the save drive
         var scanDir = Path.Combine(folder.Path, "scan");
         bool saved = false;                                           // case.db and the exports hold this scan's results
         try
         {
-            CaseFolder.CreatePrivate(work);
+            CaseFolder.CreateWork(folder.Path);
             CaseFolder.CreatePrivate(scanDir);
             var warnings = new List<string>(folder.Warnings);
             var activity = new List<object>();

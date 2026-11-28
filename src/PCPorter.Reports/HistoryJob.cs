@@ -42,8 +42,9 @@ public static class HistoryJob
         if (!source.IsLive && CaseLocation.Check(outRoot, source.ReadRoot) is { IsAllowed: false } refused)
             throw new CaseLocationRejectedException(refused.Reason!);
         var folder = CaseFolder.Create(outRoot, when);
-        var work = Path.Combine(folder.Path, "work");
-        CaseFolder.CreatePrivate(work);
+        // Temporary copies (browser history files, WebCacheV01.dat) go to the system drive: they can pass FAT32's 4 GB limit
+        // and must stay private even when the save drive cannot keep permissions.
+        var work = CaseFolder.CreateWork(folder.Path);
 
         var notes = new List<string>(source.Notes);
         notes.AddRange(options.ExtraNotes ?? []);

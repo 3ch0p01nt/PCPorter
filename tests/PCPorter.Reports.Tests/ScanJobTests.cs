@@ -30,7 +30,8 @@ public class ScanJobTests : IDisposable
         var r = ScanJob.Run(_out, new ScanJobOptions(), Collectors);
 
         Assert.Equal("partial", r.Run.Overall);
-        Assert.False(Directory.Exists(Path.Combine(r.CaseFolder, "work")));                 // cleaned up
+        Assert.False(Directory.Exists(Path.Combine(r.CaseFolder, "work")));                 // never on the save drive
+        Assert.False(Directory.Exists(CaseFolder.WorkFolderFor(r.CaseFolder)));              // and cleaned up
         var export = File.ReadAllText(Path.Combine(r.CaseFolder, "scan", "things.json"));
         Assert.DoesNotContain("Hunter2", export);                                             // redacted, still valid JSON
         using var doc = JsonDocument.Parse(export);
@@ -88,8 +89,36 @@ public class ScanJobTests : IDisposable
         Assert.NotNull(ex.CaseFolderPath);
         Assert.True(File.Exists(Path.Combine(ex.CaseFolderPath!, "case.db")));
         Assert.True(File.Exists(Path.Combine(ex.CaseFolderPath!, "scan", "things.json")));
-        Assert.False(Directory.Exists(Path.Combine(ex.CaseFolderPath!, "work")));
+        Assert.False(Directory.Exists(CaseFolder.WorkFolderFor(ex.CaseFolderPath!)));
         Assert.IsType<UnauthorizedAccessException>(ex.InnerException);
+    }
+
+    [Fact]
+    public void The_work_folder_is_private_on_the_system_drive_and_removed_on_cancel()
+    {
+        using var cts = new CancellationTokenSource();
+        string? work = null;
+        IReadOnlyList<ICollector> Collectors(PCPorter.Collectors.Sources.ISystemSource _) =>
+        [
+            new Probe("Looks", ctx =>
+            {
+                work = ctx.WorkFolder;
+                Assert.True(Directory.Exists(work));
+                cts.Cancel();
+                return new CollectorOutput("things", [], [], CollectorStatus.Cancelled);
+            }),
+        ];
+        var r = ScanJob.Run(_out, new ScanJobOptions(), Collectors, ct: cts.Token);
+        Assert.True(r.Run.Cancelled);
+        Assert.Equal(CaseFolder.WorkFolderFor(r.CaseFolder), work);
+        Assert.StartsWith(PCPorter.Core.Security.AppFolders.For("work"), work, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(work));
+    }
+
+    sealed class Probe(string name, Func<CollectorContext, CollectorOutput> run) : ICollector
+    {
+        public string Name => name;
+        public CollectorOutput Run(CollectorContext context, CancellationToken ct) => run(context);
     }
 
     static ScanJobResult Result(bool offline, params CollectorStatus[] statuses) =>
