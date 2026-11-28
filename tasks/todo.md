@@ -166,7 +166,10 @@ Design: [docs/plans/2026-11-26-pcporter-design.md](../docs/plans/2026-11-26-pcpo
   baseline UTF-8 + caseFolder; HOW-TO-RUN "If Windows blocks it" + CLI exit codes; checklist without impossible items.
 - [x] Merged into main with wiring (scan outcome in page/CLI, summary counts in gallery page/CLI, full version in all
   reports). Fast and full levels ALL PASSED (1,163 tests). Carver speed test now measures processor time.
-- [ ] Release level after reinstalling the smoke task (UAC), then the zip through the new gate.
+- [x] Release level (2026-11-27, commit 66f6261, version 0.1.0+20261127.66f6261): 1,163 tests + all smoke checks
+  ALL PASSED in 797 s, incl. the new "saving onto the drive being checked is refused" for scan and history. Zip built
+  through the gate (EXE SHA-256 8FDEDFCC...). Found on the way: publish rewrote the app's lock file, so every release
+  was stamped ".dirty"; fixed with RuntimeIdentifiers=win-x64.
 - [ ] Manual checklist (GUI items need a person at the screen).
 
 ## Phase 4 - Workbench
