@@ -70,3 +70,10 @@
 - In `@('a' + "b", 'c')` the comma binds before `+`, so string concatenation inside an array literal silently builds
   the wrong list. It mangled three template edits during the gap-closure work. Rule: build strings first (or wrap each
   element in parentheses), and never edit templates through PowerShell string building; use Edit/Write.
+
+## Never hand attacker-controlled side files to SQLite (2026-11-27)
+- DbSnapshot copied a browser's `-journal` next to its copy and opened the copy read-write. SQLite rolls back a hot
+  journal, and a journal's super-journal name makes SQLite DELETE that file: an infected old drive could delete any
+  file with admin rights. Rule: copy only the database and `-wal`; never `-journal`; prefer `immutable=1`/read-only
+  opens for untrusted databases. And a security test must fail before the fix: the first version passed because SQLite
+  silently deleted the junk journal, so assert on what PCPorter reads (SourceFiles.Observe), not on what is left.

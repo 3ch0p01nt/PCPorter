@@ -21,6 +21,54 @@ public class DbSnapshotTests
         return ms.ToArray();
     }
 
+    /// <summary>
+    /// A rollback journal is never copied. Opening a copy next to a hot journal makes SQLite roll it back, and a
+    /// crafted journal from an infected old drive can name a "super-journal" that SQLite then DELETES: any file,
+    /// with administrator rights. The journal only holds an unfinished transaction, so nothing is lost.
+    /// </summary>
+    [Fact]
+    public void A_rollback_journal_is_never_copied_next_to_the_copy()
+    {
+        var dir = BrowserFixtures.TempDir();
+        var work = Path.Combine(dir, "work");
+        Directory.CreateDirectory(work);
+        var db = Path.Combine(dir, "History");
+        try
+        {
+            using (var c = new SqliteConnection($"Data Source={db};Pooling=False"))
+            {
+                c.Open();
+                Exec(c, "PRAGMA journal_mode=DELETE; CREATE TABLE t(v TEXT); INSERT INTO t VALUES ('a');");
+            }
+            var victim = Path.Combine(dir, "victim.txt");
+            File.WriteAllText(victim, "keep me");
+            // Stand-in for a crafted hot journal; its bytes don't matter, only that it is not carried over.
+            File.WriteAllText(db + "-journal", "journal naming " + victim);
+
+            // SQLite would quietly delete an invalid journal when the copy is opened, so check the source journal is
+            // never even read: then a crafted one can never reach SQLite.
+            var reads = new List<string>();
+            using (PCPorter.Collectors.Sources.SourceFiles.Observe((kind, path) => { if (kind == "read") reads.Add(Path.GetFileName(path)); }))
+            using (var snap = DbSnapshot.Take(db, work))
+            {
+                Assert.DoesNotContain("History-journal", reads);
+                Assert.Contains("History", reads);
+                Assert.False(File.Exists(snap.Path + "-journal"));
+                using var conn = snap.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT count(*) FROM t";
+                Assert.Equal(1L, cmd.ExecuteScalar());
+            }
+            Assert.True(File.Exists(victim));
+            Assert.True(File.Exists(db + "-journal"));   // the source is never touched either
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            try { Directory.Delete(dir, true); } catch (IOException) { }
+        }
+    }
+
     [Fact]
     public void Copy_sees_uncheckpointed_wal_rows_and_the_original_is_untouched()
     {

@@ -5,9 +5,15 @@ using PCPorter.Collectors.Sources;
 namespace PCPorter.Forensics.BrowserHistory;
 
 /// <summary>
-/// A private copy of a browser's SQLite database (with its -wal / -journal files) in the case's work folder. The
-/// original is only read through shared handles; the copy is opened read-write so SQLite replays the write-ahead log
-/// into the copy, never into the original. Disposing deletes the copy.
+/// A private copy of a browser's SQLite database (with its -wal file) in the case's work folder. The original is only
+/// read through shared handles; the copy is opened read-write so SQLite replays the write-ahead log into the copy, never
+/// into the original. Disposing deletes the copy.
+/// <para>
+/// A rollback <c>-journal</c> is NEVER copied. Next to a copy it would be "hot" and SQLite would roll it back, and a
+/// crafted journal on an infected old drive can name a "super-journal" file that SQLite then deletes - any file, with
+/// this process's administrator rights. A journal only holds an unfinished transaction, so leaving it out loses
+/// nothing that was committed; a copy torn by that transaction is caught by the checks below and taken again.
+/// </para>
 /// <para>
 /// A running browser can write while the files are copied one after the other, which leaves a copy whose main file
 /// and log do not belong together. So each copy is checked (the log's salts must be the ones it had before the main
@@ -71,7 +77,6 @@ public sealed class DbSnapshot : IDisposable
                 afterMainCopied?.Invoke(attempt, copy);
                 byte[]? wal = null;
                 if (File.Exists(dbPath + "-wal")) wal = CopyShared(dbPath + "-wal", copy + "-wal", keepRaw ? warnings : null);
-                if (File.Exists(dbPath + "-journal")) CopyShared(dbPath + "-journal", copy + "-journal", null);
                 snap = new DbSnapshot(dbPath, folder, copy, main, wal) { CopiesTaken = attempt };
                 snap._warnings.AddRange(warnings);
                 var problem = SaltProblem(saltsBefore, CopySalts(copy + "-wal")) ?? QuickCheck(copy);
