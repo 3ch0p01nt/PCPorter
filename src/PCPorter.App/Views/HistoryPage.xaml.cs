@@ -158,21 +158,16 @@ public partial class HistoryPage : Page
             Show("Stopped", "Nothing was changed on the PC. A partly written case folder may remain.", InfoBarSeverity.Warning);
             RememberRun(RunOutcome.Stopped, "Stopped before the report was written.");
         }
-        catch (Exception ex) when (ex is CaseLocationRejectedException or InvalidDataException or InvalidOperationException)
-        {
-            Show("Can't start", Redactor.Redact(ex.Message), InfoBarSeverity.Warning);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Warning(ex, "history report could not be written");
-            Show("Couldn't save the report", Redactor.Redact(ex.Message), InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The report could not be saved.");
-        }
         catch (Exception ex)
         {
-            Log.Error(ex, "history report crashed");
-            Show("Something went wrong", $"The report stopped unexpectedly. Details are in the log folder: {Infrastructure.Logging.Folder}", InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The report stopped unexpectedly.");
+            var err = JobErrors.Describe(ex, "the report", Infrastructure.Logging.Folder);
+            if (err.Kind == JobErrorKind.CantStart) Show(err.Title, err.Message, InfoBarSeverity.Warning);
+            else
+            {
+                Log.Error(ex, "history report failed");
+                Show(err.Title, err.Message, InfoBarSeverity.Error);
+                RememberRun(RunOutcome.Failed, $"{err.Title}. {err.Message}");
+            }
         }
         finally { SetBusy(false); _cts?.Dispose(); _cts = null; }
     }

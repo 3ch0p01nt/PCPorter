@@ -65,26 +65,11 @@ public static class ScanCommand
                 Log.Information("scan {ScanId}: {Status}, exit {Code}", r.ScanId, summary.status, code);
                 return code;
             }
-            catch (OperationCanceledException) { return Fail(asJson, "Cancelled.", ExitCodes.Cancelled); }
-            catch (CaseLocationRejectedException ex) { return Fail(asJson, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidDataException ex) { return Fail(asJson, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidOperationException ex) { return Fail(asJson, ex.Message, ExitCodes.BadArguments); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Fail(asJson, ex.Message, ExitCodes.Failed); }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "scan crashed");
-                return Fail(asJson, $"Something went wrong; details are in {Logging.Folder}.", ExitCodes.Failed);
-            }
+            catch (Exception ex) { return CliOutput.Fail(asJson, ex, "scan"); }
             finally { Console.CancelKeyPress -= onCancel; }
         });
         return cmd;
     }
 
-    static int Fail(bool json, string message, int code)
-    {
-        message = Redactor.Redact(message);
-        if (json) Console.WriteLine(JsonSerializer.Serialize(new { error = message, exitCode = code }));
-        else Console.Error.WriteLine(message);
-        return code;
-    }
+    static int Fail(bool json, string message, int code) => CliOutput.Fail(json, message, code);
 }

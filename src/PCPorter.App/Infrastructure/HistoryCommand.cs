@@ -50,27 +50,9 @@ public static class HistoryCommand
                 Log.Information("history: {Profiles} profiles, {Visits} visits, {Warnings} warnings, exit {Code}", s.Profiles, s.Visits, s.Warnings, code);
                 return code;
             }
-            catch (OperationCanceledException) { return Fail(json, "Cancelled.", ExitCodes.Cancelled); }
-            catch (CaseLocationRejectedException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidDataException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidOperationException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (UnauthorizedAccessException ex) { return Fail(json, "Access was denied: " + ex.Message, ExitCodes.Failed); }
-            catch (IOException ex) { return Fail(json, "Could not write the case: " + ex.Message, ExitCodes.Failed); }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "history failed");
-                return Fail(json, $"Something went wrong; details are in {Logging.Folder}.", ExitCodes.Failed);
-            }
+            catch (Exception ex) { return CliOutput.Fail(json, ex, "history"); }
             finally { Console.CancelKeyPress -= onCancel; }
         });
         return cmd;
-    }
-
-    static int Fail(bool json, string message, int code)
-    {
-        message = Redactor.Redact(message);
-        if (json) Console.WriteLine(JsonSerializer.Serialize(new { error = message, exitCode = code }));
-        else Console.Error.WriteLine(message);
-        return code;
     }
 }

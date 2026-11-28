@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Windows;
 using PCPorter.App.Infrastructure;
@@ -28,7 +28,7 @@ public partial class App : Application
             if (GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) is not (FILE_TYPE_DISK or FILE_TYPE_PIPE)) AttachConsole(-1);
             var elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
             var code = CliApp.Run(e.Args, elevated,
-                ThumbsCommand.Create((s, p) => PCPorter.Reports.GalleryJobFactory.Options(s, elevated, p)),
+                ThumbsCommand.Create(elevated, (s, p) => PCPorter.Reports.GalleryJobFactory.Options(s, elevated, p)),
                 HistoryCommand.Create(elevated),
                 ScanCommand.Create(elevated),
                 SelfTestCommand.Create(elevated));

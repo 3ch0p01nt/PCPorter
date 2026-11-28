@@ -154,18 +154,16 @@ public partial class ScanPage : Page
             Announce("Scan stopped."); Show("Stopped", "Nothing was changed on the PC.", InfoBarSeverity.Warning);
             RememberRun(RunOutcome.Stopped, "Stopped before the report was written.");
         }
-        catch (Exception ex) when (ex is CaseLocationRejectedException or InvalidDataException or InvalidOperationException) { Show("Can't start", Redactor.Redact(ex.Message), InfoBarSeverity.Warning); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Warning(ex, "scan failed");
-            Show("Couldn't save the results", Redactor.Redact(ex.Message), InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The results could not be saved.");
-        }
         catch (Exception ex)
         {
-            Log.Error(ex, "scan crashed");
-            Show("Something went wrong", $"The scan stopped unexpectedly. Details are in the log folder: {Infrastructure.Logging.Folder}", InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The scan stopped unexpectedly.");
+            var err = JobErrors.Describe(ex, "the results", Infrastructure.Logging.Folder);
+            if (err.Kind == JobErrorKind.CantStart) Show(err.Title, err.Message, InfoBarSeverity.Warning);
+            else
+            {
+                Log.Error(ex, "scan failed");
+                Show(err.Title, err.Message, InfoBarSeverity.Error);
+                RememberRun(RunOutcome.Failed, $"{err.Title}. {err.Message}");
+            }
         }
         finally { _timer.Stop(); SetBusy(false); _cts?.Dispose(); _cts = null; }
     }

@@ -72,7 +72,7 @@ public partial class ThumbsPage : Page
         Result.IsOpen = false;
         OpenReport.Visibility = Visibility.Collapsed;
         _cts = new CancellationTokenSource();
-        var progress = new Progress<string>(m => Status.Text = m);   // UI thread stays free: the job runs on a worker
+        var progress = new Progress<string>(m => Status.Text = PCPorter.Core.Security.Redactor.Redact(m));   // UI thread stays free: the job runs on a worker
         try
         {
             var r = await Task.Run(() => ThumbnailJob.Run(target, progress: progress,
@@ -93,12 +93,16 @@ public partial class ThumbsPage : Page
             Show("Cancelled", "Nothing was changed on this PC. A partly written case folder may remain.", InfoBarSeverity.Informational);
             RememberRun(RunOutcome.Stopped, "Stopped before the gallery was written.");
         }
-        catch (CaseLocationRejectedException ex) { Show("Pick another folder", ex.Message, InfoBarSeverity.Warning); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            Log.Warning(ex, "Gallery job could not write");
-            Show("Could not save the report", ex.Message, InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The gallery could not be saved.");
+            var err = JobErrors.Describe(ex, "the gallery", Infrastructure.Logging.Folder);
+            if (err.Kind == JobErrorKind.CantStart) Show(err.Title, err.Message, InfoBarSeverity.Warning);
+            else
+            {
+                Log.Error(ex, "gallery failed");
+                Show(err.Title, err.Message, InfoBarSeverity.Error);
+                RememberRun(RunOutcome.Failed, $"{err.Title}. {err.Message}");
+            }
         }
         finally { SetBusy(false); _cts?.Dispose(); _cts = null; }
     }

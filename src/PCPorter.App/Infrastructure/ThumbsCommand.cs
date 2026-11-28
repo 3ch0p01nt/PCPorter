@@ -18,7 +18,7 @@ public static class ThumbsCommand
         public void Report(string value) { if (enabled) Console.Error.WriteLine(value); }
     }
 
-    public static Command Create(Func<GalleryJobFactory.Settings, IProgress<string>, ThumbnailJobOptions> setup)
+    public static Command Create(bool elevated, Func<GalleryJobFactory.Settings, IProgress<string>, ThumbnailJobOptions> setup)
     {
         var outOpt = new Option<DirectoryInfo>("--out") { Description = "Folder to write the case into (backup drive or a local folder - not a cloud-synced folder)", Required = true };
         var allUsers = new Option<bool>("--all-users") { Description = "Also read every other account on this PC (needs administrator rights and their consent)" };
@@ -53,24 +53,8 @@ public static class ThumbsCommand
                 Log.Information("thumbs: {Count} items, {Warnings} warnings", items.Count, summary.warnings);
                 return summary.warnings > 0 ? ExitCodes.Partial : ExitCodes.Ok;
             }
-            catch (CaseLocationRejectedException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (UnauthorizedAccessException ex) { return Fail(json, "Access was denied: " + ex.Message, ExitCodes.Failed); }
-            catch (IOException ex) { return Fail(json, "Could not write the case: " + ex.Message, ExitCodes.Failed); }
-            catch (OperationCanceledException) { return Fail(json, "Cancelled.", ExitCodes.Failed); }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "thumbs failed");
-                return Fail(json, "Something went wrong; details are in the log folder.", ExitCodes.Failed);
-            }
+            catch (Exception ex) { return CliOutput.Fail(json, ex, "thumbs"); }
         });
         return cmd;
-    }
-
-    static int Fail(bool json, string message, int code)
-    {
-        message = PCPorter.Core.Security.Redactor.Redact(message);
-        if (json) Console.WriteLine(JsonSerializer.Serialize(new { error = message, exitCode = code }));
-        else Console.Error.WriteLine(message);
-        return code;
     }
 }
