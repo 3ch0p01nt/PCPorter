@@ -38,6 +38,9 @@ public static class HistoryJob
     {
         options ??= new HistoryJobOptions();
         var when = now ?? DateTimeOffset.UtcNow;
+        // Another PC's drive: never write the case onto it (compared by real volume location, not by the text of the paths).
+        if (!source.IsLive && CaseLocation.Check(outRoot, source.ReadRoot) is { IsAllowed: false } refused)
+            throw new CaseLocationRejectedException(refused.Reason!);
         var folder = CaseFolder.Create(outRoot, when);
         var work = Path.Combine(folder.Path, "work");
         CaseFolder.CreatePrivate(work);

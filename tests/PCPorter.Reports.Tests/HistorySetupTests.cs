@@ -39,11 +39,25 @@ public sealed class HistorySetupTests : IDisposable
     {
         Assert.NotNull(HistorySetup.SaveFolderProblem(@"D:\Cases", @"D:\"));
         Assert.NotNull(HistorySetup.SaveFolderProblem(@"d:\", @"D:\"));
-        var drive = Path.Combine(_temp, "olddrive") + "\\";
+        var drive = Directory.CreateDirectory(Path.Combine(_temp, "olddrive")).FullName + "\\";
+        var other = Directory.CreateDirectory(Path.Combine(_temp, "otherdrive")).FullName + "\\";
         Assert.NotNull(HistorySetup.SaveFolderProblem(Path.Combine(drive, "Cases"), drive));
         Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "olddrive-cases"), drive));   // a sibling, not inside
-        Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "Cases"), @"D:\"));   // a drive that exists (E: may not)
+        Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "Cases"), other));
         Assert.Null(HistorySetup.SaveFolderProblem(Path.Combine(_temp, "Cases"), null));
+        // The same folder reached another way is still the drive being checked (real locations are compared).
+        Assert.NotNull(HistorySetup.SaveFolderProblem(@"\\?\" + Path.Combine(drive, "Cases"), drive));
+        Assert.NotNull(HistorySetup.SaveFolderProblem(Path.Combine(drive, "Cases"), @"\\?\" + drive));
+    }
+
+    [Fact]
+    public void The_history_job_itself_refuses_to_save_on_the_drive_being_read()
+    {
+        var drive = Directory.CreateDirectory(Path.Combine(_temp, "olddrive")).FullName;
+        var outRoot = Path.Combine(drive, "Cases");
+        using var source = new PCPorter.TestKit.FakeSystemSource(drive);
+        Assert.Throws<CaseLocationRejectedException>(() => HistoryJob.Run(outRoot, source));
+        Assert.False(Directory.Exists(outRoot));
     }
 
     [Fact]
