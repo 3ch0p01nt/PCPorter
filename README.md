@@ -17,7 +17,10 @@ All read-only: nothing on the scanned PC is changed.
   deleted visits recovered from the history files' free space and older visits from existing restore points
   (administrator). Saved passwords, cookies and payment cards are never read. Works on this PC or another PC's drive.
 - Command line: `PCPorter.exe scan --out E:\`, `PCPorter.exe thumbs --out E:\`, `PCPorter.exe history --out E:\`
-  (`--offline D:\`, `--all-users`, `--json`), `PCPorter.exe selftest`.
+  (`--offline D:\`, `--all-users`, `--json`), `PCPorter.exe selftest`. PCPorter.exe is a windowed program, so
+  PowerShell does not wait for it: pipe it to `Out-String` to wait and see its output, then read the exit code, e.g.
+  `.\PCPorter.exe scan --out E:\ | Out-String` then `$LASTEXITCODE` (0 ok, 1 partial, 2 failed, 3 bad arguments or a
+  refused save folder, 4 not elevated, 5 findings with `--fail-on`, 6 cancelled).
 
 Not built yet: backup and restore, activity timeline and saved-password reports. See
 [docs/plans/2026-11-26-pcporter-design.md](docs/plans/2026-11-26-pcporter-design.md) for the full design and
@@ -29,8 +32,21 @@ Needs the .NET 10 SDK on Windows.
 ```powershell
 dotnet build
 .\scripts\regress.ps1                 # unit, golden-file and fixture tests (no admin needed)
-.\scripts\package.ps1                 # publishes the single-file EXE and builds the zip
 ```
+
+Release (PowerShell 7):
+
+```powershell
+.\scripts\regress.ps1 -Level release  # publishes to C:\PCPorter-dist\PCPorter and smoke-tests that EXE (one-time setup:
+                                      # scripts\regress\install-smoke-task.ps1 as administrator)
+.\scripts\package.ps1                 # zips the dist folder (does not publish)
+```
+
+`package.ps1` only zips a build that passed the smoke run: the dist folder must hold exactly the published files,
+and `C:\PCPorterCases\regress\smoke-last.json` must say ok, be newer than the EXE and record the same EXE SHA-256.
+Otherwise it refuses. `-Publish` publishes first, but that build is untested and is zipped only with
+`-AllowUntested`. Builds are stamped `0.1.0+<commit date>.<short commit hash>` (`.dirty` with uncommitted changes),
+from `Directory.Build.props`.
 
 Run `PCPorter.exe` as administrator to scan the PC it runs on. Results are written only to the folder you pick;
 cloud-synced folders (OneDrive, Dropbox, Google Drive) are refused because reports contain private data.
