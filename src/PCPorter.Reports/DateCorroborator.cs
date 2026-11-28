@@ -24,11 +24,23 @@ public static class DateCorroborator
             var confidence = i.Dates.Confidence;
 
             // The earliest restore point that already held this entry (same user, same cache id).
-            if (i.RestorePoints is { Count: > 0 } points && points.Min() is var restore && (before is null || restore < before))
+            // It only tightens the window when it falls inside it; otherwise the live copy was stored again later
+            // (e.g. the cache was rebuilt), so the line is supporting evidence and the window stays as it is.
+            if (i.RestorePoints is { Count: > 0 } points)
             {
-                before = restore;
-                sources.Add($"Already in a restore point from {restore:u} (the picture was stored before this)");
-                confidence = "High";
+                var after = i.Dates.After;
+                var older = points.Where(p => after is { } a && p <= a).ToList();
+                var inside = points.Where(p => (after is null || p > after) && (before is null || p < before)).ToList();
+                if (older.Count > 0)
+                    sources.Add($"Already in a restore point from {older.Min():u}, before this cache file was created: Windows first stored the picture before then and stored it again later");
+                if (inside.Count > 0)
+                {
+                    before = inside.Min();
+                    confidence = "High";
+                    sources.Add($"Already in a restore point from {before:u} (the picture was stored before this)");
+                }
+                else if (older.Count == 0)
+                    sources.Add($"Also in a restore point from {points.Min():u}");
             }
             if (i.OriginalPath is not null && opens.TryGetValue(i.OriginalPath, out var opened))
                 foreach (var o in opened.Take(5))

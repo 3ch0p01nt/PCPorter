@@ -26,6 +26,21 @@ public class DateCorroboratorTests
     }
 
     [Fact]
+    public void Restore_point_older_than_the_window_adds_a_line_but_never_inverts_it()
+    {
+        var older = new DateTimeOffset(2025, 12, 1, 0, 0, 0, TimeSpan.Zero);   // before the live cache file was created
+        var item = Assert.Single(DateCorroborator.Apply([Thumb("bob", "aa", null, older)]));
+        Assert.Equal(Jan, item.Dates!.After);
+        Assert.Equal(Nov, item.Dates.Before);
+        Assert.Equal("Low", item.Dates.Confidence);
+        Assert.Contains(item.Dates.Sources, s => s.Contains("2025-12-01"));
+
+        var mixed = Assert.Single(DateCorroborator.Apply([Thumb("bob", "aa", null, older, Day(3, 10))]));
+        Assert.Equal(Day(3, 10), mixed.Dates!.Before);                     // the one inside the window tightens it
+        Assert.Equal("High", mixed.Dates.Confidence);
+    }
+
+    [Fact]
     public void Items_without_restore_points_are_not_affected()
     {
         var items = DateCorroborator.Apply([Thumb("bob", "aa"), Thumb("bob", "bb", null, Day(3, 10))]);
