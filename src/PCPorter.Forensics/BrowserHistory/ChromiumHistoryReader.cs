@@ -28,6 +28,10 @@ public static class ChromiumHistoryReader
     const string DownloadsSql = "SELECT * FROM downloads ORDER BY start_time, id";
     const string ChainSql = "SELECT url FROM downloads_url_chains WHERE id = $id ORDER BY chain_index LIMIT 1";
 
+    static readonly string[] VisitTables = ["visits", "urls"];
+    /// <summary>Every table the History connection may read (the read guard refuses all others).</summary>
+    static readonly string[] Tables = ["visits", "urls", "keyword_search_terms", "downloads", "downloads_url_chains"];
+
     /// <param name="stillOnDisk">Whether a path on the scanned PC still exists (null = cannot tell, e.g. another drive).</param>
     public static ProfileHistory Read(BrowserProfile profile, string workFolder, Func<string, bool?>? stillOnDisk = null, CancellationToken ct = default)
     {
@@ -42,11 +46,14 @@ public static class ChromiumHistoryReader
         try
         {
             conn = snap.Open();
+            var refused = RefusedParts(conn, profile, snap, warnings, ("visits", VisitTables), ("searches", ["keyword_search_terms", "urls"]),
+                ("downloads", ["downloads", "downloads_url_chains"]));
+            UntrustedSqlite.AllowOnly(conn, Tables);
             var urlSearches = new List<Search>();
             var keys = new List<string>();
-            visits = ReadVisits(conn, profile, urlSearches, ct, keys);
-            searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
-            downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
+            visits = refused.Contains("visits") ? [] : ReadVisits(conn, profile, urlSearches, ct, keys);
+            searches = MergeSearches(refused.Contains("searches") ? [] : ReadKeywordSearches(conn, profile, notes), urlSearches);
+            downloads = refused.Contains("downloads") ? [] : ReadDownloads(conn, profile, stillOnDisk, notes, ct);
             WarnInconsistent(profile, snap, warnings);
             var live = conn;
             visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
@@ -73,8 +80,24 @@ public static class ChromiumHistoryReader
     {
         using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder, keepRaw: false);
         using var conn = snap.Open();
+        if (UntrustedSqlite.NotPlainTable(conn, VisitTables) is { } why) throw new InvalidDataException($"{Path.GetFileName(snap.SourcePath)}: {why}.");
+        UntrustedSqlite.AllowOnly(conn, VisitTables);
         var keys = new List<string>();
         return ReadVisits(conn, profile, [], ct, keys).Zip(keys).ToList();
+    }
+
+    /// <summary>
+    /// Checks the tables of each part before the read guard goes on (the guard refuses the schema table). A part whose
+    /// table is a view or a virtual table is not read, with a warning; the other parts still are.
+    /// </summary>
+    internal static HashSet<string> RefusedParts(SqliteConnection conn, BrowserProfile profile, DbSnapshot snap, List<string> warnings,
+        params (string Part, string[] Tables)[] parts)
+    {
+        var refused = new HashSet<string>();
+        foreach (var (part, tables) in parts)
+            if (UntrustedSqlite.NotPlainTable(conn, tables) is { } why && refused.Add(part))
+                warnings.Add($"{profile.Browser} ({profile.Name}) for {profile.User}: the {part} in {Path.GetFileName(snap.SourcePath)} were not read: {why}.");
+        return refused;
     }
 
     /// <summary>Reads one optional part of a profile; if it fails, the rest of the profile is still shown.</summary>

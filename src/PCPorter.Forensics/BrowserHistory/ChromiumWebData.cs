@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using PCPorter.Core.Security;
 using PCPorter.Core.Time;
 
 namespace PCPorter.Forensics.BrowserHistory;
@@ -18,7 +19,8 @@ public static class ChromiumWebData
         if (!BrowserProfileFinder.FileExists(path)) return [];
         using var snap = DbSnapshot.Take(path, workFolder, keepRaw: false);      // never carved: its bytes are not held in memory
         using var conn = snap.Open();
-        SqliteReadGuard.AllowOnly(conn, Table);
+        if (UntrustedSqlite.NotPlainTable(conn, Table) is { } why) throw new InvalidDataException($"Web Data: {why}.");
+        UntrustedSqlite.AllowOnly(conn, Table);
         var list = new List<FormEntry>();
         int dropped = 0;
         try

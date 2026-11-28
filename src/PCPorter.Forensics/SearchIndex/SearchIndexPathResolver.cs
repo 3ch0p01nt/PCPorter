@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using PCPorter.Core.Security;
 using PCPorter.Forensics.Thumbcache;
 
 namespace PCPorter.Forensics.SearchIndex;
@@ -118,6 +119,10 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
             }
             if (withoutPath > 0) _notes.Add($"{withoutPath} pictures are in the search index but without a file path.");
         }
+        catch (InvalidDataException ex)                                     // a view or virtual table: never read
+        {
+            _notes.Add($"The Windows Search index was not read: {ex.Message}. Original file paths are shown as unknown.");
+        }
         catch (SqliteException ex) when (ex.SqliteErrorCode is 11 or 26)    // SQLITE_CORRUPT / SQLITE_NOTADB
         {
             _notes.Add("The Windows Search index looks damaged or is being rebuilt, so original file paths are shown as unknown. Try again later, or turn on 'Include the newest search-index changes' (--full-index on the command line).");
@@ -155,20 +160,37 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
         src.CopyTo(dst, 1 << 20);
     }
 
+    /// <summary>
+    /// Opens the index hardened (it may be an old PC's file, see <see cref="UntrustedSqlite"/>); its two tables must be
+    /// plain tables, and the connection may read nothing else.
+    /// </summary>
     static SqliteConnection Open(string path, bool immutable)
     {
         var uri = "file:" + Uri.EscapeDataString(path.Replace('\\', '/')).Replace("%2F", "/").Replace("%3A", ":") + (immutable ? "?immutable=1" : "");
-        var conn = new SqliteConnection(new SqliteConnectionStringBuilder
+        var conn = UntrustedSqlite.Open(new SqliteConnectionStringBuilder
         {
             DataSource = uri,
             Mode = immutable ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWrite,   // a private copy may need to replay its WAL
-        }.ToString());
-        conn.Open();
-        using var pragma = conn.CreateCommand();
-        pragma.CommandText = "PRAGMA mmap_size=2147483648; PRAGMA cache_size=-262144; PRAGMA temp_store=MEMORY;";
-        pragma.ExecuteNonQuery();
-        return conn;
+        }, UntrustedSqlite.BudgetFor(path));
+        try
+        {
+            using (var pragma = conn.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA mmap_size=2147483648; PRAGMA cache_size=-262144; PRAGMA temp_store=MEMORY;";
+                pragma.ExecuteNonQuery();
+            }
+            if (UntrustedSqlite.NotPlainTable(conn, Tables) is { } why) throw new InvalidDataException(why);
+            UntrustedSqlite.AllowOnly(conn, Tables);
+            return conn;
+        }
+        catch
+        {
+            conn.Dispose();
+            throw;
+        }
     }
+
+    static readonly string[] Tables = ["SystemIndex_1_PropertyStore", "SystemIndex_1_PropertyStore_Metadata"];
 
     static long? ColumnId(SqliteConnection conn, string propertyName)
     {

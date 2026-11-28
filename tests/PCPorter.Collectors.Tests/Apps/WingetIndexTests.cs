@@ -168,4 +168,42 @@ public class WingetIndexTests : IDisposable
     [InlineData("Igor Pavlov", "igorpavlov")]
     [InlineData("Acme, Inc.", "acme")]
     public void Publishers_normalize_like_winget(string pub, string expected) => Assert.Equal(expected, WingetIndex.NormalizePublisher(pub));
+
+    // A catalog on an infected old drive is the attacker's file: its tables can be views or virtual tables.
+    string Tamper(string sql)
+    {
+        var file = MakeIndex();
+        using (var db = new SqliteConnection($"Data Source={file};Pooling=False"))
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+        }
+        return file;
+    }
+
+    [Fact]
+    public void A_catalog_with_a_cross_join_view_is_refused_quickly()
+    {
+        var file = Tamper("""
+            DROP TABLE productcodes2;
+            CREATE TABLE n(x);
+            WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c LIMIT 100) INSERT INTO n SELECT i FROM c;
+            CREATE VIEW productcodes2 AS SELECT 'x' AS productcode, a.x AS package FROM n a, n b, n c, n d, n e, n f;
+            """);
+        var cpu = ThreadCpu.Of(() => Assert.Contains("is a view", Assert.Throws<InvalidDataException>(() => WingetIndex.OpenFile(file)).Message));
+        Assert.True(cpu < TimeSpan.FromSeconds(5), $"{cpu.TotalSeconds:0.0} s of processor time");
+    }
+
+    [Fact]
+    public void A_catalog_with_a_virtual_table_is_refused()
+    {
+        var file = Tamper("""
+            DROP TABLE packages;
+            CREATE VIRTUAL TABLE packages USING fts4(id, name, moniker, latest_version);
+            INSERT INTO packages(rowid, id, name, latest_version) VALUES (2, 'Evil.Chrome', 'Google Chrome', '1');
+            """);
+        Assert.Contains("is a virtual table", Assert.Throws<InvalidDataException>(() => WingetIndex.OpenFile(file)).Message);
+    }
 }

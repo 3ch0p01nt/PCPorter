@@ -33,6 +33,10 @@ public static class FirefoxHistoryReader
         ORDER BY a.place_id, a.id
         """;
 
+    static readonly string[] VisitTables = ["moz_historyvisits", "moz_places"];
+    /// <summary>Every table the places.sqlite connection may read (the read guard refuses all others).</summary>
+    static readonly string[] Tables = ["moz_historyvisits", "moz_places", "moz_bookmarks", "moz_annos", "moz_anno_attributes"];
+
     public const string FormTable = "moz_formhistory";
     public const string FormSql = "SELECT fieldname, value, timesUsed, firstUsed, lastUsed FROM moz_formhistory";
 
@@ -66,12 +70,15 @@ public static class FirefoxHistoryReader
             {
                 conn = snap.Open();
                 var live = conn;
+                var refused = ChromiumHistoryReader.RefusedParts(conn, profile, snap, warnings, ("visits", VisitTables),
+                    ("bookmarks", ["moz_bookmarks", "moz_places"]), ("downloads", ["moz_annos", "moz_anno_attributes", "moz_places"]));
+                UntrustedSqlite.AllowOnly(conn, Tables);
                 var urlSearches = new List<Search>();
                 var keys = new List<string>();
-                visits = ReadVisits(conn, profile, urlSearches, ct, keys);
+                visits = refused.Contains("visits") ? [] : ReadVisits(conn, profile, urlSearches, ct, keys);
                 searches = ChromiumHistoryReader.MergeSearches([], urlSearches);
-                bookmarks = ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(live, profile));
-                downloads = ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(live, profile, stillOnDisk, notes, ct));
+                bookmarks = refused.Contains("bookmarks") ? [] : ChromiumHistoryReader.Part(profile, "bookmarks", warnings, () => ReadBookmarks(live, profile));
+                downloads = refused.Contains("downloads") ? [] : ChromiumHistoryReader.Part(profile, "downloads", warnings, () => ReadDownloads(live, profile, stillOnDisk, notes, ct));
                 ChromiumHistoryReader.WarnInconsistent(profile, snap, warnings);
                 visits.AddRange(ChromiumHistoryReader.Carve(profile, snap, notes, warnings,
                     () => SqliteCarver.Firefox(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
@@ -97,6 +104,8 @@ public static class FirefoxHistoryReader
     {
         using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "places.sqlite"), workFolder, keepRaw: false);
         using var conn = snap.Open();
+        if (UntrustedSqlite.NotPlainTable(conn, VisitTables) is { } why) throw new InvalidDataException($"places.sqlite: {why}.");
+        UntrustedSqlite.AllowOnly(conn, VisitTables);
         var keys = new List<string>();
         return ReadVisits(conn, profile, [], ct, keys).Zip(keys).ToList();
     }
@@ -257,7 +266,8 @@ public static class FirefoxHistoryReader
         if (!BrowserProfileFinder.FileExists(path)) return [];
         using var snap = DbSnapshot.Take(path, workFolder, keepRaw: false);      // never carved: its bytes are not held in memory
         using var conn = snap.Open();
-        SqliteReadGuard.AllowOnly(conn, FormTable);
+        if (UntrustedSqlite.NotPlainTable(conn, FormTable) is { } why) throw new InvalidDataException($"formhistory.sqlite: {why}.");
+        UntrustedSqlite.AllowOnly(conn, FormTable);
         var list = new List<FormEntry>();
         int dropped = 0;
         try

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using Microsoft.Data.Sqlite;
 using PCPorter.Collectors.Sources;
+using PCPorter.Core.Security;
 
 namespace PCPorter.Forensics.BrowserHistory;
 
@@ -96,18 +97,16 @@ public sealed class DbSnapshot : IDisposable
         }
     }
 
-    /// <summary>Opens the copy. Pooling is off so the file handle is released on dispose.</summary>
-    public SqliteConnection Open()
+    /// <summary>
+    /// Opens the copy, hardened (<see cref="UntrustedSqlite.Harden"/>): the file comes from the old PC and its schema is
+    /// not trusted. Pooling is off so the file handle is released on dispose. Callers check their tables with
+    /// <see cref="UntrustedSqlite.NotPlainTable"/> and then call <see cref="UntrustedSqlite.AllowOnly"/>.
+    /// </summary>
+    public SqliteConnection Open() => UntrustedSqlite.Open(new SqliteConnectionStringBuilder
     {
-        var conn = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = Path,
-            Mode = SqliteOpenMode.ReadWrite,     // the private copy may need to replay its write-ahead log
-            Pooling = false,
-        }.ToString());
-        conn.Open();
-        return conn;
-    }
+        DataSource = Path,
+        Mode = SqliteOpenMode.ReadWrite,     // the private copy may need to replay its write-ahead log
+    }, UntrustedSqlite.BudgetFor(Path));
 
     // ---------------------------------------------------------------- consistency of the copy
 
@@ -149,11 +148,8 @@ public sealed class DbSnapshot : IDisposable
     {
         try
         {
-            using var conn = new SqliteConnection(new SqliteConnectionStringBuilder
-            {
-                DataSource = copy, Mode = SqliteOpenMode.ReadWrite, Pooling = false,
-            }.ToString());
-            conn.Open();
+            // Hardened too: the check evaluates the file's own CHECK constraints.
+            using var conn = UntrustedSqlite.Open(new SqliteConnectionStringBuilder { DataSource = copy, Mode = SqliteOpenMode.ReadWrite });
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "PRAGMA quick_check(1)";
             var result = cmd.ExecuteScalar() as string;
