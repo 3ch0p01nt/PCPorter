@@ -122,6 +122,19 @@ public class RecentImageOpensSourceTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Cloud_only_targets_are_not_read()
+    {
+        using var profile = new TempProfile();
+        var online = profile.Write(@"OneDrive\Pictures\cat.png", TinyPng);
+        File.SetAttributes(online, File.GetAttributes(online) | FileAttributes.Offline);
+        var ctx = new ImageSourceContext("bob", profile.Folder, new List<string>());
+
+        var e = RecentImageOpensSource.MapJumpListItem(ctx, "Photos", new RecentImageOpensSource.JumpListItem(online, null, 1, false))!;
+        Assert.Null(e.ImageBytes);
+        Assert.Contains(RecentImageOpensSource.CloudOnlyNote, e.Note);
+    }
+
+    [Fact]
     public void Targets_are_mapped_onto_the_scanned_drive_and_network_paths_are_not_touched()
     {
         Assert.Equal(@"E:\Users\bob\Pictures\a.jpg",

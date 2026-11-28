@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PCPorter.Core.Security;
 using PCPorter.Forensics.Gallery;
 
 namespace PCPorter.Reports;
@@ -37,8 +38,8 @@ public static class GalleryReport
         {
             meta,
             imagesFolder = imagesFolderName,
-            notes = result.Notes,
-            warnings = result.Warnings,
+            notes = result.Notes.Select(Redactor.Redact),
+            warnings = result.Warnings.Select(Redactor.Redact),
             cacheFiles = result.CacheFiles,
             items = result.Items.Select(Dto),
         }, Json);
@@ -63,11 +64,11 @@ public static class GalleryReport
     /// <summary>Compact per-item shape for the page: images[0] is the best copy, no duplicated fields.</summary>
     static object Dto(GalleryItem i) => new
     {
-        i.Id, i.Kind, i.Source, Evidence = i.Evidence.ToString(), i.User, i.CacheId, i.OriginalPath, i.Url,
+        i.Id, i.Kind, i.Source, Evidence = i.Evidence.ToString(), i.User, i.CacheId, i.OriginalPath, Url = i.Url is null ? null : Redactor.Redact(i.Url),
         Status = i.Status.ToString(), FreeSpace = i.FoundInFreeSpace ? true : (bool?)null,
-        Images = i.Images.Select(x => new { s = x.SizeClass, w = x.Width, h = x.Height, f = x.File, r = x.FoundInFreeSpace ? true : (bool?)null }),
+        Images = i.Images.Select(x => new { s = x.SizeClass, w = x.Width, h = x.Height, f = x.File, r = x.FoundInFreeSpace ? true : (bool?)null, rp = x.RestorePoint }),
         Dates = i.Dates is null ? null : new { after = i.Dates.After, before = i.Dates.Before, confidence = i.Dates.Confidence, sources = i.Dates.Sources },
-        i.Note, Dup = i.DupGroup,
+        i.Note, Dup = i.DupGroup, i.RestorePoints, OnlyRestore = i.OnlyInRestorePoints ? true : (bool?)null,
     };
 
     static string LoadTemplate()

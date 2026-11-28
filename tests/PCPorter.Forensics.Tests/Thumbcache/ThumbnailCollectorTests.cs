@@ -107,6 +107,32 @@ public class ThumbnailCollectorTests : IDisposable
     }
 
     [Fact]
+    public void Restore_point_copies_merge_into_the_live_item()
+    {
+        var live = Explorer("bob", ("thumbcache_96.db", new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Png).Build()));
+        var rpDir = Path.Combine(_root, "rp", "Explorer");
+        Directory.CreateDirectory(rpDir);
+        File.WriteAllBytes(Path.Combine(rpDir, "thumbcache_96.db"),
+            new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Jpeg).Entry(2, ThumbcacheBuilder.Png).Build());
+        var created = new DateTimeOffset(2026, 3, 10, 9, 0, 0, TimeSpan.Zero);
+
+        var result = Collect(new NoPathResolver(), new ThumbnailSource("bob", live), new ThumbnailSource("bob", rpDir, created));
+
+        Assert.Equal(2, result.Items.Count);                                     // not 3: the copy of #1 is merged
+        Assert.All(result.Items, i => Assert.Equal("bob", i.User));
+        var both = result.Items.Single(i => i.CacheId == "0000000000000001");
+        Assert.False(both.OnlyInRestorePoints);
+        Assert.Equal([created], both.RestorePoints!);
+        Assert.Equal(2, both.Images.Count);
+        Assert.Null(both.Best!.RestorePoint);                                    // the live copy is shown first
+        var old = result.Items.Single(i => i.CacheId == "0000000000000002");
+        Assert.True(old.OnlyInRestorePoints);
+        Assert.Contains("only in a restore point", old.Note);
+        Assert.Equal(2, result.Summary.Thumbnails);
+        Assert.Equal(1, result.Summary.OnlyInRestorePoints);
+    }
+
+    [Fact]
     public void Icons_are_separate_and_never_resolved()
     {
         var dir = Explorer("bob",
@@ -139,6 +165,57 @@ public class ThumbnailCollectorTests : IDisposable
         Assert.Equal("bob", Assert.Single(mine).User);
         var all = ThumbnailCollector.LiveSources(allUsers: true, usersRoot: users, currentProfile: Path.Combine(users, "bob"));
         Assert.Equal(["alice", "bob"], all.Select(s => s.User).Order());
+    }
+
+    static void Junction(string link, string target)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe") { CreateNoWindow = true, UseShellExecute = false };
+        foreach (var a in new[] { "/c", "mklink", "/J", link, target }) psi.ArgumentList.Add(a);
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        p.WaitForExit();
+        Assert.True(Directory.Exists(link), "mklink /J failed");
+    }
+
+    [Fact]
+    public void All_users_warns_for_each_account_skipped_and_why()
+    {
+        Explorer("alice", ("thumbcache_96.db", []));
+        Explorer("bob", ("thumbcache_96.db", []));
+        var users = Path.Combine(_root, "Users");
+        Directory.CreateDirectory(Path.Combine(users, "carol"));                  // never used Explorer
+        Directory.CreateDirectory(Path.Combine(users, "Public"));                 // not an account: silent
+        Directory.CreateDirectory(Path.Combine(users, "Default"));
+        var elsewhere = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
+        var dave = Path.Combine(users, "dave");
+        Junction(dave, elsewhere);
+        try
+        {
+            var found = ThumbnailCollector.FindLiveSources(allUsers: true, usersRoot: users, currentProfile: Path.Combine(users, "bob"));
+            Assert.Equal(["alice", "bob"], found.Sources.Select(s => s.User).Order());
+            Assert.Equal(2, found.Skipped.Count);
+            Assert.Contains(found.Skipped, w => w.Contains("carol") && w.Contains("no File Explorer"));
+            Assert.Contains(found.Skipped, w => w.Contains("dave") && w.Contains("link"));
+        }
+        finally { Directory.Delete(dave); }
+    }
+
+    [Fact]
+    public void A_junction_inside_the_users_own_profile_cannot_pull_in_another_accounts_thumbnails()
+    {
+        var alice = Explorer("alice", ("thumbcache_96.db", new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Png).Build()));
+        var bobWindows = Path.Combine(_root, "Users", "bob", "AppData", "Local", "Microsoft", "Windows");
+        Directory.CreateDirectory(Path.GetDirectoryName(bobWindows)!);
+        Junction(bobWindows, Path.GetDirectoryName(alice)!);                    // bob's ...\Windows -> alice's ...\Windows
+        try
+        {
+            var bobExplorer = Path.Combine(bobWindows, "Explorer");
+            Assert.True(File.Exists(Path.Combine(bobExplorer, "thumbcache_96.db")));
+            var result = Collect(new NoPathResolver(), new ThumbnailSource("bob", bobExplorer));
+            Assert.Empty(result.Items);
+            Assert.Contains(result.Warnings, w => w.Contains("bob") && w.Contains("link"));
+            Assert.Single(Collect(new NoPathResolver(), new ThumbnailSource("alice", alice)).Items);   // alice's own run still works
+        }
+        finally { Directory.Delete(bobWindows); }
     }
 
     [Fact]

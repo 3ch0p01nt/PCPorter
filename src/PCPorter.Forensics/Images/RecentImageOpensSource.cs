@@ -15,6 +15,7 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
     internal const string ShortcutTimeMeaning = "shortcut created (first opened) / shortcut last changed (last opened)";
     internal const string JumpListTimeMeaning = "last opened (Jump List)";
     internal const string MissingNote = "file no longer exists";
+    internal const string CloudOnlyNote = "file is stored only online (not downloaded)";
 
     static RecentImageOpensSource()
     {
@@ -27,12 +28,15 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
     public IEnumerable<ImageEvidence> Collect(ImageSourceContext context, CancellationToken cancellationToken = default)
     {
         var recent = Path.Combine(context.ProfileFolder, "AppData", "Roaming", "Microsoft", "Windows", "Recent");
+        var cloudPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // the same online file can be in several lists
 
         foreach (var lnkPath in SafeEnumerate(recent, "*.lnk", context.Warnings, "Recent files"))
         {
             if (cancellationToken.IsCancellationRequested) yield break;
             var evidence = TryShortcut(context, lnkPath);
-            if (evidence is not null) yield return evidence;
+            if (evidence is null) continue;
+            if (IsCloudOnly(evidence)) cloudPaths.Add(evidence.OriginalPath!);
+            yield return evidence;
         }
 
         var auto = Path.Combine(recent, "AutomaticDestinations");
@@ -40,9 +44,16 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
         {
             if (cancellationToken.IsCancellationRequested) yield break;
             foreach (var evidence in TryJumpList(context, jumpPath, cancellationToken))
+            {
+                if (IsCloudOnly(evidence)) cloudPaths.Add(evidence.OriginalPath!);
                 yield return evidence;
+            }
         }
+        ImageFiles.AddCloudNote(context, "Recently opened files", cloudPaths.Count);
     }
+
+    private static bool IsCloudOnly(ImageEvidence e) =>
+        e.OriginalPath is not null && e.Note is { } n && n.Contains(CloudOnlyNote, StringComparison.Ordinal);
 
     // ---- Recent .lnk ----
 
@@ -87,7 +98,18 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
             TimeMeaning: ShortcutTimeMeaning,
             ImageBytes: bytes,
             ContentType: contentType,
-            Note: notes.Count == 0 ? null : string.Join("; ", notes));
+            Note: notes.Count == 0 ? null : string.Join("; ", notes),
+            VolumeSerial: nameOnly ? null : VolumeSerial(lnk));
+    }
+
+    /// <summary>The serial of the volume the target was on when the shortcut was written (LinkInfo VolumeID), if recorded.</summary>
+    internal static uint? VolumeSerial(LnkFile? lnk)
+    {
+        var text = lnk?.VolumeInfo?.VolumeSerialNumber?.Trim();
+        if (string.IsNullOrEmpty(text)) return null;
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) text = text[2..];
+        text = text.Replace("-", "", StringComparison.Ordinal);
+        return uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v) && v != 0 ? v : null;
     }
 
     /// <summary>Target path from the shortcut's LinkInfo (local or network), else relative path + working directory.</summary>
@@ -132,7 +154,7 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
     // ---- Jump Lists ----
 
     /// <summary>The parts of a Jump List entry this source uses (seam for tests).</summary>
-    internal sealed record JumpListItem(string? TargetPath, DateTimeOffset? LastOpened, int InteractionCount, bool Pinned);
+    internal sealed record JumpListItem(string? TargetPath, DateTimeOffset? LastOpened, int InteractionCount, bool Pinned, uint? VolumeSerial = null);
 
     private static IEnumerable<ImageEvidence> TryJumpList(ImageSourceContext context, string jumpPath, CancellationToken cancellationToken)
     {
@@ -147,7 +169,7 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
             {
                 string? target = TargetPath(entry.Lnk);
                 if (target is null && !string.IsNullOrWhiteSpace(entry.Path)) target = entry.Path;
-                items.Add(new JumpListItem(target, entry.LastModified, entry.InteractionCount, entry.Pinned));
+                items.Add(new JumpListItem(target, entry.LastModified, entry.InteractionCount, entry.Pinned, VolumeSerial(entry.Lnk)));
             }
         }
         catch (Exception ex)
@@ -193,7 +215,8 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
             TimeMeaning: JumpListTimeMeaning,
             ImageBytes: bytes,
             ContentType: contentType,
-            Note: notes.Count == 0 ? null : string.Join("; ", notes));
+            Note: notes.Count == 0 ? null : string.Join("; ", notes),
+            VolumeSerial: item.VolumeSerial);
     }
 
     // ---- shared ----
@@ -214,6 +237,7 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
         {
             var info = new FileInfo(local);
             if (!info.Exists) return (null, contentType, MissingNote);
+            if (ImageFiles.IsCloudOnly(local)) return (null, contentType, CloudOnlyNote);
             if (!ImageFiles.IsImageExtension(target)) return (null, contentType, "file still exists (video, not loaded)");
             if (info.Length > ImageFiles.MaxImageBytes) return (null, contentType, "file still exists but is larger than 30 MB (not loaded)");
             var bytes = ImageFiles.ReadAll(local);

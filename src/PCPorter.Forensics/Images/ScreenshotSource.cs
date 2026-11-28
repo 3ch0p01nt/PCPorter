@@ -23,13 +23,22 @@ public sealed class ScreenshotSource : IImageEvidenceSource
 
         foreach (var (label, folder, recurse) in places)
         {
+            int cloudOnly = 0;
             foreach (var file in SafeEnumerate(folder, recurse, context.Warnings, label))
             {
                 if (cancellationToken.IsCancellationRequested) yield break;
+                if (IsCandidate(file) && ImageFiles.IsCloudOnly(file)) { cloudOnly++; continue; }   // never download it
                 var evidence = TryRead(context, label, file);
                 if (evidence is not null) yield return evidence;
             }
+            ImageFiles.AddCloudNote(context, label, cloudOnly);
         }
+    }
+
+    private static bool IsCandidate(string file)
+    {
+        var ext = Path.GetExtension(file);
+        return ext.Length == 0 || ScreenshotExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
     }
 
     private static List<string> SafeEnumerate(string folder, bool recurse, IList<string> warnings, string label)
@@ -56,9 +65,8 @@ public sealed class ScreenshotSource : IImageEvidenceSource
     {
         try
         {
-            var ext = Path.GetExtension(file);
-            bool knownExtension = ScreenshotExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
-            if (!knownExtension && ext.Length > 0) return null;      // only extension-less files are sniffed
+            if (!IsCandidate(file)) return null;                    // only extension-less files are sniffed
+            bool knownExtension = Path.GetExtension(file).Length > 0;
 
             var info = new FileInfo(file);
             if (info.Length == 0) return null;

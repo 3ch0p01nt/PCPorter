@@ -45,29 +45,48 @@ public static class GalleryJobFactory
     }
 
     /// <summary>Windows 10: copy the locked index out of a temporary shadow copy (created and removed by PCPorter).</summary>
-    sealed class SnapshotIndexResolver(string work, IProgress<string>? progress) : IThumbnailPathResolver
+    /// <remarks>
+    /// The paths found are kept even when only removing the shadow copy fails (that gets its own note), and a Cancel
+    /// is never turned into a note.
+    /// </remarks>
+    public sealed class SnapshotIndexResolver(string work, IProgress<string>? progress,
+        ISnapshotProvider? provider = null, Func<string, IThumbnailPathResolver>? innerFor = null) : IThumbnailPathResolver
     {
         readonly List<string> _notes = [];
         public IReadOnlyList<string> Notes => _notes;
         public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> ids) => Resolve(ids, default);
 
+        static bool Expected(Exception e) =>
+            e is InvalidOperationException or UnauthorizedAccessException or System.Management.ManagementException or IOException
+            && e is not OperationCanceledException;   // ObjectDisposed/OperationCanceled derive from InvalidOperationException
+
         public IReadOnlyDictionary<ulong, string> Resolve(IReadOnlyCollection<ulong> ids, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
+            ISnapshot? snap = null;
+            IReadOnlyDictionary<ulong, string> map = new Dictionary<ulong, string>();
             try
             {
                 progress?.Report("Taking a temporary shadow copy to read the Windows 10 search index");
-                using var snap = new VssSnapshotProvider().Create(@"C:\");
-                var inner = SearchIndexResolverFactory.ForPc(snap.Map(SearchFolder), work, progress);
-                var map = inner.Resolve(ids, ct);
+                snap = (provider ?? new VssSnapshotProvider()).Create(@"C:\");
+                var inner = innerFor?.Invoke(snap.Map(SearchFolder)) ?? SearchIndexResolverFactory.ForPc(snap.Map(SearchFolder), work, progress);
+                map = inner.Resolve(ids, ct);
                 _notes.AddRange(inner.Notes);
-                return map;
             }
-            catch (Exception e) when (e is InvalidOperationException or UnauthorizedAccessException or System.Management.ManagementException or IOException)
+            catch (Exception e) when (Expected(e))
             {
                 _notes.Add("The Windows 10 search index could not be read (" + e.Message + "). Original file paths are shown as unknown.");
-                return new Dictionary<ulong, string>();
             }
+            finally
+            {
+                // Runs on Cancel too; a failure here must neither hide the Cancel nor throw away the paths found.
+                try { snap?.Dispose(); }
+                catch (Exception e) when (Expected(e))
+                {
+                    _notes.Add("The temporary shadow copy could not be removed (" + e.Message + "). The paths found were kept. PCPorter removes it the next time it takes a shadow copy.");
+                }
+            }
+            return map;
         }
     }
 
@@ -80,7 +99,7 @@ public static class GalleryJobFactory
             {
                 if (!src.ExplorerFolder.StartsWith(@"C:\", StringComparison.OrdinalIgnoreCase)) continue;
                 var mapped = VssSnapshotProvider.MapPath(device, @"C:\", src.ExplorerFolder);
-                if (Directory.Exists(mapped)) list.Add(new ThumbnailSource($"{src.User} (restore point {created:yyyy-MM-dd})", mapped));
+                if (Directory.Exists(mapped)) list.Add(new ThumbnailSource(src.User, mapped, RestorePoint: created));
             }
         return list;
     }

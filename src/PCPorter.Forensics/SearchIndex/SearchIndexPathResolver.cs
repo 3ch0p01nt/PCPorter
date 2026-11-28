@@ -120,7 +120,7 @@ public sealed class SearchIndexPathResolver(string databasePath, IProgress<strin
         }
         catch (SqliteException ex) when (ex.SqliteErrorCode is 11 or 26)    // SQLITE_CORRUPT / SQLITE_NOTADB
         {
-            _notes.Add("The Windows Search index looks damaged or is being rebuilt, so original file paths are shown as unknown. Try again later or use --full-index.");
+            _notes.Add("The Windows Search index looks damaged or is being rebuilt, so original file paths are shown as unknown. Try again later, or turn on 'Include the newest search-index changes' (--full-index on the command line).");
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException || (ex is SqliteException s && s.SqliteErrorCode is 14 or 23))   // CANTOPEN / AUTH
         {

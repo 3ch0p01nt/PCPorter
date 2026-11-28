@@ -1,31 +1,16 @@
-using System.Globalization;
-using System.Text.RegularExpressions;
 using PCPorter.Forensics.Gallery;
 
 namespace PCPorter.Reports;
 
 /// <summary>
 /// Tightens and supports "displayed between" windows using other records:
-/// - a thumbnail also present in a restore point dated D was stored before D (upper bound, confidence High);
+/// - a thumbnail also present in a restore point created at D was stored before D (upper bound, confidence High);
 /// - the same file opened in an app (recent files, Jump Lists) adds a supporting time line.
 /// </summary>
-public static partial class DateCorroborator
+public static class DateCorroborator
 {
-    [GeneratedRegex(@"^(?<user>.+) \(restore point (?<date>\d{4}-\d{2}-\d{2})\)$")]
-    private static partial Regex RestorePointUser();
-
     public static List<GalleryItem> Apply(IReadOnlyList<GalleryItem> items)
     {
-        // Earliest restore point that already held each (user, cache id).
-        var earliestRestore = new Dictionary<(string, string), DateTimeOffset>();
-        foreach (var i in items)
-        {
-            if (i.CacheId is null || RestorePointUser().Match(i.User) is not { Success: true } m) continue;
-            var date = DateTimeOffset.ParseExact(m.Groups["date"].Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal).AddDays(1);
-            var key = (m.Groups["user"].Value, i.CacheId);
-            if (!earliestRestore.TryGetValue(key, out var d) || date < d) earliestRestore[key] = date;
-        }
-
         var opens = items.Where(i => i.Kind == "opened" && i.OriginalPath is not null && i.Dates is not null)
             .GroupBy(i => i.OriginalPath!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
@@ -38,11 +23,24 @@ public static partial class DateCorroborator
             var before = i.Dates.Before;
             var confidence = i.Dates.Confidence;
 
-            if (i.CacheId is not null && earliestRestore.TryGetValue((i.User, i.CacheId), out var restore) && (before is null || restore < before))
+            // The earliest restore point that already held this entry (same user, same cache id).
+            // It only tightens the window when it falls inside it; otherwise the live copy was stored again later
+            // (e.g. the cache was rebuilt), so the line is supporting evidence and the window stays as it is.
+            if (i.RestorePoints is { Count: > 0 } points)
             {
-                before = restore;
-                sources.Add($"Already in a restore point from {restore.AddDays(-1):yyyy-MM-dd} (the picture was stored before this)");
-                confidence = "High";
+                var after = i.Dates.After;
+                var older = points.Where(p => after is { } a && p <= a).ToList();
+                var inside = points.Where(p => (after is null || p > after) && (before is null || p < before)).ToList();
+                if (older.Count > 0)
+                    sources.Add($"Already in a restore point from {older.Min():u}, before this cache file was created: Windows first stored the picture before then and stored it again later");
+                if (inside.Count > 0)
+                {
+                    before = inside.Min();
+                    confidence = "High";
+                    sources.Add($"Already in a restore point from {before:u} (the picture was stored before this)");
+                }
+                else if (older.Count == 0)
+                    sources.Add($"Also in a restore point from {points.Min():u}");
             }
             if (i.OriginalPath is not null && opens.TryGetValue(i.OriginalPath, out var opened))
                 foreach (var o in opened.Take(5))

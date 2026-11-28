@@ -37,7 +37,7 @@ public static class ThumbcacheIndexParser
     {
         try
         {
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var fs = PCPorter.Collectors.Sources.SourceFiles.OpenRead(path);   // confined to the profile when the caller set it
             return ReadIds(fs);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }

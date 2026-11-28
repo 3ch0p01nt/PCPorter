@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using PCPorter.Core.Case;
+using PCPorter.Core.Security;
 using PCPorter.Forensics.Gallery;
 using PCPorter.Forensics.Images;
 using PCPorter.Forensics.Thumbcache;
@@ -38,32 +39,45 @@ public static class ThumbnailJob
         var imagesFolder = Path.Combine(reportFolder, "thumbs");
         var work = Path.Combine(folder.Path, "work");
         CaseFolder.CreatePrivate(work);
-        try { return Collect(); }
+        bool reportWritten = false;
+        try
+        {
+            var result = Collect();
+            reportWritten = true;
+            return result;
+        }
         finally
         {
             // Also on Cancel or a failure: the work folder can hold a copy of the search index.
-            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            TryDelete(work);
+            // Without a report nobody would know the extracted private pictures are there: remove the whole case.
+            if (!reportWritten) TryDelete(folder.Path);
         }
 
         ThumbnailJobResult Collect()
         {
         resolver ??= options.ResolverFactory?.Invoke(work) ?? new NoPathResolver();
-        sources ??= ThumbnailCollector.LiveSources(options.AllUsers);
+        IReadOnlyList<string> skippedAccounts = [];
+        if (sources is null)
+        {
+            var found = ThumbnailCollector.FindLiveSources(options.AllUsers);
+            (sources, skippedAccounts) = (found.Sources, found.Skipped);
+        }
         var allSources = options.AdditionalSources is null ? sources : sources.Concat(options.AdditionalSources(sources)).ToList();
-        var scan = new ThumbnailCollector(resolver).Collect(allSources, imagesFolder, progress, ct);
+        var store = new ImageStore(imagesFolder);   // one store for every source: the same picture is saved once
+        var scan = new ThumbnailCollector(resolver).Collect(allSources, store, progress, ct);
 
         // Other image sources (browser caches, screenshots, recently opened files) go into the same gallery.
         var items = scan.Items.ToList();
-        var warnings = scan.Warnings.ToList();
+        var warnings = skippedAccounts.Concat(scan.Warnings).ToList();
         var notes = scan.Notes.Concat(options.ExtraNotes ?? []).ToList();
         if (options.ExtraSources is { Count: > 0 })
         {
-            var store = new ImageStore(imagesFolder);
             var locator = new OriginalLocator();
             foreach (var src in sources)
             {
-                var profile = Path.GetFullPath(Path.Combine(src.ExplorerFolder, "..", "..", "..", "..", ".."));
-                var ctx = new ImageSourceContext(src.User, profile, warnings);
+                var profile = ThumbnailCollector.ProfileOf(src.ExplorerFolder);
+                var ctx = new ImageSourceContext(src.User, profile, warnings, notes);
                 foreach (var source in options.ExtraSources)
                 {
                     ct.ThrowIfCancellationRequested();
@@ -92,7 +106,8 @@ public static class ThumbnailJob
         }
         ct.ThrowIfCancellationRequested();
 
-        scan = new GalleryScanResult(items, scan.CacheFiles, warnings, notes);
+        // Warnings and notes quote paths, addresses and error messages: masked once here for the report, the app and logs.
+        scan = new GalleryScanResult(items, scan.CacheFiles, warnings.Select(Redactor.Redact).ToList(), notes.Select(Redactor.Redact).ToList());
 
         using (var db = CaseDb.Open(Path.Combine(folder.Path, "case.db")))
             db.Insert(items.Select(i => new Artifact(
@@ -105,6 +120,16 @@ public static class ThumbnailJob
         var meta = new ReportMeta(Environment.MachineName, when, version, sources.Select(s => s.User).ToList(), options.AllUsers);
         var report = GalleryReport.WriteFile(scan, meta, reportFolder);
         return new ThumbnailJobResult(report, folder.Path, scan, folder.Warnings);
+        }
+    }
+
+    static void TryDelete(string path)
+    {
+        // A file can be briefly held (antivirus, the search indexer): retry a few times.
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            try { if (Directory.Exists(path)) Directory.Delete(path, true); return; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Thread.Sleep(100 * (attempt + 1)); }
         }
     }
 }
@@ -127,9 +152,12 @@ public static class EvidenceMapper
         var sources = new List<string>();
         if (ev.FirstSeenUtc is { } f) sources.Add($"{f:u}: {ev.TimeMeaning ?? "first seen"} (earliest)");
         if (ev.LastSeenUtc is { } l) sources.Add($"{l:u}: {ev.TimeMeaning ?? "last seen"} (latest)");
-        var status = ev.OriginalPath is null ? OriginalStatus.Unknown : locator.Locate(ev.OriginalPath);
+        var status = ev.OriginalPath is null ? OriginalStatus.Unknown : locator.Locate(ev.OriginalPath, ev.VolumeSerial);
         var id = $"{kind[0]}-{ev.User}-{System.IO.Hashing.XxHash64.HashToUInt64(System.Text.Encoding.UTF8.GetBytes($"{ev.Source}|{ev.OriginalPath}|{ev.Url}|{ev.FirstSeenUtc}|{ev.LastSeenUtc}")):x16}";
-        return new GalleryItem(id, kind, ev.Source, ev.Evidence, ev.User, CacheId: null, ev.OriginalPath, ev.Url, status,
+        // Cached addresses can carry sign-in tokens and signatures (?sig=, access_token=, user:password@): masked here,
+        // so neither case.db nor the report ever holds them.
+        var url = ev.Url is null ? null : Redactor.Redact(ev.Url);
+        return new GalleryItem(id, kind, ev.Source, ev.Evidence, ev.User, CacheId: null, ev.OriginalPath, url, status,
             FoundInFreeSpace: false, Best: image, Images: image is null ? [] : [image],
             Dates: sources.Count == 0 ? null : new DateWindow(ev.FirstSeenUtc, ev.LastSeenUtc ?? ev.FirstSeenUtc, "Medium", sources),
             Note: ev.Note);
