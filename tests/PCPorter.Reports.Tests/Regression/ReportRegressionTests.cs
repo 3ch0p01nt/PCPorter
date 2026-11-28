@@ -27,7 +27,7 @@ public class ReportRegressionTests : IDisposable
     (ScanJobResult Result, string Html) RenderNow(string name)
     {
         var pc = SyntheticPcs.All().Single(p => p.Name == name);
-        var r = ScanJob.Run(_out, new ScanJobOptions(), _ => pc.Collectors);
+        var r = ScanJob.Run(_out, new ScanJobOptions(), _ => pc.Collectors, ct: pc.Stop?.Token ?? default);
         // Make the report independent of the machine running the test: no host name, no host notes.
         r = r with { ScannedComputer = null, SourceNotes = [], Offline = pc.Offline };
         return (r, HealthReport.Render(r, FixedTime));
@@ -66,7 +66,8 @@ public class ReportRegressionTests : IDisposable
         Assert.Equal("Needs attention", verdicts["failing-hardware"]);
         Assert.Equal("Looks good", verdicts["dead-drive-offline"]);
         Assert.Equal(SyntheticPcs.All().Count(), verdicts.Count);
-        Assert.Equal("Looks good", verdicts["partial-scan"]);   // the wording below the verdict says only part was checked
+        Assert.Equal("Incomplete check", verdicts["partial-scan"]);   // a check failed: never "Looks good"
+        Assert.Equal("Incomplete check", verdicts["stopped-early"]);  // the user stopped it
     }
 
     /// <summary>The rule checker itself must catch the bugs it exists for (otherwise it could silently pass everything).</summary>
@@ -90,5 +91,9 @@ public class ReportRegressionTests : IDisposable
         Assert.NotEmpty(ReportInvariants.Violations(System.Text.RegularExpressions.Regex.Replace(good, @"<span class=""chip [a-z]+"">[^<]*</span>", "", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1))));   // unlabelled rows
         var clean = Render("clean").Html;
         Assert.NotEmpty(ReportInvariants.Violations(clean.Replace("<tr><td>7-Zip</td>", "<tr><td>Family Recipes</td><td>Small Shop</td><td></td><td></td></tr><tr><td>7-Zip</td>")));   // duplicate app
+        var stopped = Render("stopped-early").Html;
+        Assert.Empty(ReportInvariants.Violations(stopped));
+        Assert.NotEmpty(ReportInvariants.Violations(stopped.Replace("<h1>Incomplete check</h1>", "<h1>Looks good</h1>")));      // stopped scan, clean verdict
+        Assert.NotEmpty(ReportInvariants.Violations(stopped.Replace("stopped early", "not finished")));                           // stop not called out
     }
 }

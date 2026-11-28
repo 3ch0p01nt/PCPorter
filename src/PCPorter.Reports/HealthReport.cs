@@ -42,11 +42,20 @@ public static class HealthReport
             _ => ("Looks good", "We didn't find anything that needs your attention."),
         };
         // Never claim more than was checked.
-        bool partial = r.Run.AnyFailed || r.Run.AnyPartial;
+        bool stopped = r.Run.Cancelled;
+        bool partial = stopped || r.Run.AnyFailed || r.Run.AnyPartial;
+        bool incomplete = Assessment.IsIncomplete(r.Run);   // stopped, or a check failed: no clean bill of health
         if (worst < Level.Unusual && (partial || r.Offline))
-            line = r.Offline
+            line = r.Offline && !incomplete
                 ? "Nothing stood out on this drive. Some checks (antivirus state, hardware health) only work on a running PC."
                 : "Nothing stood out in the parts we could check.";
+        if (incomplete && worst <= Level.Unusual)
+        {
+            word = "Incomplete check";
+            line = (worst == Level.Unusual ? "A few things are unusual in the parts we could check. " : line + " ")
+                + (stopped ? "The scan did not finish, so this is not a full check." : "Some checks did not finish, so this is not a full check.");
+        }
+        var verdictLevel = word == "Incomplete check" ? Level.Note : worst;   // neutral colour and icon, never the green tick
 
         var h = new StringBuilder(64 * 1024);
         h.Append("""
@@ -62,14 +71,16 @@ public static class HealthReport
         h.Append("</ol></nav><main id=\"main\">");
 
         // 1. Verdict
-        h.Append($"<header id=\"verdict\" class=\"verdict {Cls(worst)}\"><div class=\"icon\" aria-hidden=\"true\">{Icon(worst)}</div><div>");
+        h.Append($"<header id=\"verdict\" class=\"verdict {Cls(verdictLevel)}\"><div class=\"icon\" aria-hidden=\"true\">{(word == "Incomplete check" ? "i" : Icon(worst))}</div><div>");
         h.Append($"<p class=\"eyebrow\">PC health and security &middot; {E(computer)}</p><h1>{word}</h1><p>{line}</p>");
         h.Append("<ul class=\"facts\">");
         h.Append($"<li><b>{counts.WorthALook}</b> worth a look</li><li><b>{counts.Unusual}</b> unusual</li>");
         var appRows = ReinstallRows(apps).Count;
         h.Append($"<li><b>{appRows}</b> app{S(appRows)} to reinstall</li>");
         h.Append($"<li>Scanned {E(generatedUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm"))}{(r.Offline ? " from its drive" : "")}</li></ul>");
-        if (partial)
+        if (stopped)
+            h.Append("<p class=\"partial\">The scan was stopped early, so parts of this report are missing. Lists marked as incomplete show only what was found before it stopped. See Technical details at the end.</p>");
+        else if (partial)
             h.Append("<p class=\"partial\">Some checks could not finish, so parts of this report are missing. See Technical details at the end.</p>");
         h.Append("</div></header>");
 
@@ -80,7 +91,9 @@ public static class HealthReport
             Level.WorthALook => "<section id=\"todo\"><h2>Check these things</h2>",
             _ => "<section id=\"todo\"><h2>Worth checking when you have time</h2><p class=\"muted\">Nothing here is urgent.</p>",
         });
-        if (actions.Count == 0) h.Append("<p class=\"ok\">Nothing to do. Keep Windows updated and your backups running.</p>");
+        if (actions.Count == 0)
+            h.Append(incomplete ? "<p class=\"muted\">Nothing to do in the parts we could check. Run the scan again to check the rest.</p>"
+                : "<p class=\"ok\">Nothing to do. Keep Windows updated and your backups running.</p>");
         else
         {
             h.Append("<ol class=\"todo\">");
@@ -93,6 +106,7 @@ public static class HealthReport
 
         // 3. Security
         h.Append("<section id=\"security\"><h2>Security</h2><h3>Antivirus</h3>");
+        Unfinished(h, a, "av");
         if (a.ActiveAntivirus.Count > 0)
             foreach (var av in a.ActiveAntivirus)
                 h.Append(Row(Level.Ok, av.Vendor, av.IsMicrosoft == true
@@ -111,24 +125,30 @@ public static class HealthReport
                 : $"Installed but not the active protection ({other.Status ?? "off"}). This is normal when another product is in charge.", null));
 
         h.Append("<h3>Windows protections</h3>");
+        Unfinished(h, a, "posture");
         foreach (var p in a.Posture.OrderByDescending(a.LevelOf).ThenByDescending(p => p.Severity))
         {
             var lv = a.LevelOf(p);
             h.Append(Row(lv, p.Title, p.Finding, lv >= Level.Unusual ? p.Advice : null,
                 p.Status switch { PostureStatus.Unknown => "Unknown", PostureStatus.NotApplicable => "Not needed", _ => null }));
         }
-        if (a.Posture.Count == 0) h.Append("<p class=\"muted\">The settings check did not run.</p>");
+        if (a.Posture.Count == 0 && !a.Unfinished.Contains("posture")) h.Append("<p class=\"muted\">The settings check did not run.</p>");
 
         h.Append("<h3>Programs that start with Windows</h3>");
+        Unfinished(h, a, "persistence");
         AppendStartup(h, a);
         h.Append("</section>");
 
         // 4. Moving
         h.Append("<section id=\"moving\"><h2>Moving to your new PC</h2>");
+        Unfinished(h, a, "apps");
         var reinstall = ReinstallRows(apps);
         int withSource = reinstall.Count(x => x.App.WingetId is not null || x.App.Kind == AppKind.Store || x.App.ChocoId is not null || x.App.ScoopId is not null);
         if (reinstall.Count == 0)
-            h.Append(a.Ran.Contains("apps") ? "<p class=\"muted\">No apps to reinstall were found.</p>" : "<p class=\"muted\">The installed-apps check did not run.</p>");
+        {
+            if (!a.Unfinished.Contains("apps"))
+                h.Append(a.Ran.Contains("apps") ? "<p class=\"muted\">No apps to reinstall were found.</p>" : "<p class=\"muted\">The installed-apps check did not run.</p>");
+        }
         else
         {
             h.Append($"<p>{reinstall.Count} app{S(reinstall.Count)} to install again on the new PC. {withSource} can be installed automatically; the rest need a download from the maker's website.</p>");
@@ -141,6 +161,7 @@ public static class HealthReport
 
         // 5. Hardware
         h.Append("<section id=\"hardware\"><h2>Hardware health</h2>");
+        Unfinished(h, a, "profile");
         AppendHardware(h, a.Profile);
         h.Append("</section>");
 
@@ -230,8 +251,15 @@ public static class HealthReport
         var normal = a.Startup.Count(s => Assessment.OfStartup(s) == Level.Ok) + a.HiddenStartup;
         if (normal > 0)
             h.Append(Row(Level.Ok, "Everything else", $"{normal} startup item{S(normal)} {(normal == 1 ? "is" : "are")} from known publishers or part of Windows. Nothing to do.", null, "Normal"));
-        else if (a.Startup.Count == 0)
+        else if (a.Startup.Count == 0 && !a.Unfinished.Contains("persistence"))
             h.Append(a.Ran.Contains("persistence") ? "<p class=\"muted\">No startup programs were found.</p>" : "<p class=\"muted\">The startup check did not run.</p>");
+    }
+
+    /// <summary>Marks a section whose check was stopped part-way: what is listed is only what was found before it stopped.</summary>
+    static void Unfinished(StringBuilder h, Assessment a, string kind)
+    {
+        if (a.Unfinished.Contains(kind))
+            h.Append("<p class=\"partial\">This list is incomplete: this check was stopped before it finished.</p>");
     }
 
     static void AppendHardware(StringBuilder h, PcProfile? p)

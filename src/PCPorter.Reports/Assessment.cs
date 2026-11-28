@@ -29,6 +29,15 @@ public sealed class Assessment
     public required int HiddenStartup { get; init; }
     /// <summary>Kinds of output that were produced ("persistence", "apps"...): "none found" is only said when the check ran.</summary>
     public required IReadOnlySet<string> Ran { get; init; }
+    /// <summary>Kinds whose check was stopped part-way (cancelled, timed out): their lists hold only what was found so far.</summary>
+    public required IReadOnlySet<string> Unfinished { get; init; }
+
+    /// <summary>
+    /// True when the scan was stopped or a check failed or ran out of time: the report then never claims a clean bill of
+    /// health ("Incomplete check" instead of "Looks good" / "Mostly fine"). A check that only partly read its data is not
+    /// enough for this; it gets the "parts we could check" wording.
+    /// </summary>
+    public static bool IsIncomplete(ScanRunResult run) => run.Cancelled || run.AnyFailed;
 
     public static Assessment Of(ScanJobResult r)
     {
@@ -44,6 +53,8 @@ public sealed class Assessment
             Startup = items.OfType<PersistenceItem>().Where(p => p.Severity != Severity.Hidden).ToList(),
             HiddenStartup = items.OfType<PersistenceItem>().Count(p => p.Severity == Severity.Hidden),
             Ran = r.Run.Runs.Where(x => x.Output is not null && x.Status is CollectorStatus.Ok or CollectorStatus.Partial)
+                .Select(x => x.Output!.Kind).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            Unfinished = r.Run.Runs.Where(x => x.Output is not null && x.Status is CollectorStatus.Cancelled or CollectorStatus.TimedOut or CollectorStatus.Failed)
                 .Select(x => x.Output!.Kind).ToHashSet(StringComparer.OrdinalIgnoreCase),
         };
     }

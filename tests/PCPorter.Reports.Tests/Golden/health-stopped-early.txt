@@ -1,0 +1,51 @@
+i
+PC health and security · HOME-PC
+Incomplete check
+Nothing stood out in the parts we could check. The scan did not finish, so this is not a full check.
+0 worth a look
+0 unusual
+0 apps to reinstall
+Scanned <time>
+The scan was stopped early, so parts of this report are missing. Lists marked as incomplete show only what was found before it stopped. See Technical details at the end.
+Worth checking when you have time
+Nothing here is urgent.
+Nothing to do in the parts we could check. Run the scan again to check the rest.
+Security
+Antivirus
+[OK] Microsoft Defender: Protected by Microsoft Defender, which is built into Windows. Your new PC has it already.
+Windows protections
+[OK] Firewall: The firewall is on for every type of network.
+[OK] User Account Control: User Account Control is on.
+[OK] Windows updates: Windows installed updates yesterday.
+Programs that start with Windows
+This list is incomplete: this check was stopped before it finished.
+[Normal] Everything else: 1 startup item is from known publishers or part of Windows. Nothing to do.
+Moving to your new PC
+The installed-apps check did not run.
+Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+Hardware health
+16 GB memory · 8 processor threads · x64
+Drives
+[OK] Samsung SSD 990 (1 TB, SSD): Healthy (about 97% of rated life left).
+[OK] Drive C:: 400 GB free of 1 TB (40% free).
+[OK] Crashes: No crashes or unexpected restarts in the last 90 days.
+Technical details
+Show technical details
+Checks that ran
+Check | Result | Found | Time | Note
+PC profile and health | Ok | 1 | #.# s |
+Antivirus | Ok | 1 | #.# s |
+Security settings | Ok | 3 | #.# s |
+Programs that start automatically | Cancelled | 1 | #.# s |
+Installed apps | Cancelled | 0 | #.# s | Cancelled before it started.
+Settings evidence
+Firewall | firewall=ok
+User Account Control | uac=ok
+Windows updates | windows-update=ok
+PC details
+Windows | Windows 11 Home 25H2 (build 26200.100)
+Edition | Core
+Architecture | x64
+TPM version | 2.0
+Scan <id>. The full data is in the case folder (case.db and the scan folder).
+Read-only scan. Nothing was changed or sent anywhere. Made by PCPorter.

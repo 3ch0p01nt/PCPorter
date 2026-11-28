@@ -21,6 +21,8 @@ public static partial class ReportInvariants
     [GeneratedRegex(@"<tr><td>([^<]*)</td><td>([^<]*)</td>")] private static partial Regex AppRow();
     [GeneratedRegex(@"<ol class=""todo"">(.*?)</ol>", RegexOptions.Singleline)] private static partial Regex TodoList();
     [GeneratedRegex(@"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)")] private static partial Regex AnyTag();
+    /// <summary>A row of the "Checks that ran" table for a check that was stopped, failed or ran out of time.</summary>
+    [GeneratedRegex(@"<tr><td>[^<]*</td><td>(Cancelled|Failed|TimedOut)</td>")] private static partial Regex IncompleteRun();
     [GeneratedRegex(@"<[^>]*\son[a-z]+\s*=", RegexOptions.IgnoreCase)] private static partial Regex EventHandler();
 
     /// <summary>Every tag HealthReport writes. Anything else in the file came from scanned data that was not escaped.</summary>
@@ -43,7 +45,12 @@ public static partial class ReportInvariants
 
         var verdict = Verdict().Match(html).Groups[1].Value;
         var expected = chips.Contains("Fix this") ? "Needs attention" : chips.Contains("Worth a look") ? "Worth a look" : chips.Contains("Unusual") ? "Mostly fine" : "Looks good";
+        // A stopped scan or a failed check never gets a clean bill of health.
+        bool incomplete = IncompleteRun().IsMatch(html);
+        if (incomplete && expected is "Looks good" or "Mostly fine") expected = "Incomplete check";
         if (verdict != expected) v.Add($"Verdict is '{verdict}' but the labels call for '{expected}'.");
+        if (incomplete && !html.Contains("<p class=\"partial\">")) v.Add("A check was stopped or failed, but the summary does not say parts are missing.");
+        if (Regex.IsMatch(html, @"<tr><td>[^<]*</td><td>Cancelled</td>") && !html.Contains("stopped early")) v.Add("The scan was stopped, but the summary does not say so.");
 
         var heading = expected switch { "Needs attention" => "Do these things", "Worth a look" => "Check these things", _ => "Worth checking when you have time" };
         if (!html.Contains($"<section id=\"todo\"><h2>{heading}</h2>"))
