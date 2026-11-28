@@ -272,12 +272,14 @@
   // Visits table
   const filterFrom = () => $("from").value ? new Date($("from").value + "T00:00:00").getTime() / 1000 : null;
   const filterTo = () => $("to").value ? new Date($("to").value + "T00:00:00").getTime() / 1000 + 86400 : null;
-  // The view in the address (read before the table exists: building it rewrites the address)
+  // The view in the address (read before the table exists: building it rewrites the address). Only the dates are
+  // kept there: search text would end up in the browser's own history, so it is never written (an old "q" is still read once).
   const hq = hashState.get("q"), hf = hashState.get("from"), ht = hashState.get("to");
   if (hf) $("from").value = hf;
   if (ht) $("to").value = ht;
   let fromS = filterFrom(), toS = filterTo(), visitTable = null, ready = false;
-  const originOf = v => (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` (${S[v[7]]})` : "");
+  // The column (and its filter) shows the bare origin; where exactly a row was found is in the detail below the table.
+  const originOf = v => originText[ORG[v[6]]] || ORG[v[6]];
   const visitColumns = [
     { label: `When (${zone})`, get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "13rem", descFirst: true },
     { label: "Title", get: v => v[2] >= 0 ? S[v[2]] : "", width: "minmax(0,1.3fr)", filter: true },
@@ -286,7 +288,7 @@
     { label: "Time on page", get: v => v[5], text: v => dur(v[5]), width: "7rem" },
     { label: "Browser", get: v => profText(v[0]), width: "11rem", filter: "select" },
     { label: "Account", get: v => prof(v[0]).user, width: "7rem", filter: "select" },
-    { label: "Origin", get: originOf, width: "10rem", filter: "select", cls: "" },
+    { label: "Origin", get: originOf, width: "11rem", filter: "select", cls: "" },
   ];
   const visitDetail = dl => v => showDetail(dl, [["Address", S[v[1]], true], ["Title", v[2] >= 0 ? S[v[2]] : ""], ["When", `${fmt(v[3])} (UTC ${utc(v[3])})`],
     ["How", howText[HOW[v[4]]] || HOW[v[4]]], ["Browser", `${profText(v[0])} (${prof(v[0]).user})`], ["Origin", (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` - ${S[v[7]]}` : "")]]);
@@ -294,7 +296,7 @@
     name: "Visits", sort: 0, desc: true, height: 560, placeholder: "Search addresses, titles, browsers...",
     filter: v => (fromS == null || v[3] >= fromS) && (toS == null || v[3] < toS),
     onSelect: visitDetail($("visit-detail")),
-    onChange: () => { if (ready) hashState.set({ q: visitTable.query(), from: $("from").value, to: $("to").value }); },
+    onChange: () => { if (ready) hashState.set({ q: "", from: $("from").value, to: $("to").value }); },
   });
 
   // Recovered history: per profile counts and the recovered visits on their own

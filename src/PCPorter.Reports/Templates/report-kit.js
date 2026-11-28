@@ -34,10 +34,13 @@ const PCK = (() => {
     }
   }
 
-  /** CSV cell: quoted when needed; a leading = + - @ or tab is defused so spreadsheets do not run it as a formula. */
+  /**
+   * CSV cell: quoted when needed. A cell starting with = + - @, a tab or a carriage return, or with spaces or other
+   * whitespace before one of = + - @, is defused with a leading ' so spreadsheets do not run it as a formula.
+   */
   function csvEscape(v) {
     let s = v == null ? "" : String(v);
-    if (/^[=+\-@\t]/.test(s)) s = "'" + s;
+    if (/^(?:[=+\-@\t\r]|\s+[=+\-@])/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) || s.startsWith("'") ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
