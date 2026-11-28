@@ -6,6 +6,11 @@ using static PCPorter.TestKit.ChromiumFixture;
 
 namespace PCPorter.Forensics.Tests.BrowserHistory;
 
+/// <summary>Runs alone in its test process, so the speed test can measure this process's processor time.</summary>
+[CollectionDefinition("Carver timing", DisableParallelization = true)]
+public sealed class CarverTimingCollection;
+
+[Collection("Carver timing")]
 public class SqliteCarverTests
 {
     static readonly DateTimeOffset T0 = new(2025, 6, 1, 8, 0, 0, TimeSpan.Zero);
@@ -416,11 +421,16 @@ public class SqliteCarverTests
             using (live)
             {
                 byte[] big = [.. main, .. RandomBytes(50 << 20, 9)];     // worst case: every byte is free space
-                var watch = Stopwatch.StartNew();
+                // Processor time, not wall-clock time: the full test level runs several test projects at once, which
+                // slowed the wall clock to 11.6 s once while the carver itself needed about 3 s. This class runs
+                // alone in its process (collection above), so the process's processor time is the carver's.
+                var me = Process.GetCurrentProcess();
+                var cpuBefore = me.TotalProcessorTime;
                 var r = SqliteCarver.Chromium(Chrome(dir), big, null, live, Now);
-                watch.Stop();
+                me.Refresh();
+                var cpu = me.TotalProcessorTime - cpuBefore;
                 Assert.Empty(r.Visits);
-                Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), $"took {watch.Elapsed.TotalSeconds:F1} s");
+                Assert.True(cpu < TimeSpan.FromSeconds(8), $"used {cpu.TotalSeconds:F1} s of processor time");
             }
         }
         finally { BrowserFixtures.Delete(dir); }
