@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using PCPorter.Core.Case;
+using PCPorter.Core.Security;
 using PCPorter.Forensics.Gallery;
 using PCPorter.Forensics.Images;
 using PCPorter.Forensics.Thumbcache;
@@ -105,7 +106,8 @@ public static class ThumbnailJob
         }
         ct.ThrowIfCancellationRequested();
 
-        scan = new GalleryScanResult(items, scan.CacheFiles, warnings, notes);
+        // Warnings and notes quote paths, addresses and error messages: masked once here for the report, the app and logs.
+        scan = new GalleryScanResult(items, scan.CacheFiles, warnings.Select(Redactor.Redact).ToList(), notes.Select(Redactor.Redact).ToList());
 
         using (var db = CaseDb.Open(Path.Combine(folder.Path, "case.db")))
             db.Insert(items.Select(i => new Artifact(
@@ -152,7 +154,10 @@ public static class EvidenceMapper
         if (ev.LastSeenUtc is { } l) sources.Add($"{l:u}: {ev.TimeMeaning ?? "last seen"} (latest)");
         var status = ev.OriginalPath is null ? OriginalStatus.Unknown : locator.Locate(ev.OriginalPath, ev.VolumeSerial);
         var id = $"{kind[0]}-{ev.User}-{System.IO.Hashing.XxHash64.HashToUInt64(System.Text.Encoding.UTF8.GetBytes($"{ev.Source}|{ev.OriginalPath}|{ev.Url}|{ev.FirstSeenUtc}|{ev.LastSeenUtc}")):x16}";
-        return new GalleryItem(id, kind, ev.Source, ev.Evidence, ev.User, CacheId: null, ev.OriginalPath, ev.Url, status,
+        // Cached addresses can carry sign-in tokens and signatures (?sig=, access_token=, user:password@): masked here,
+        // so neither case.db nor the report ever holds them.
+        var url = ev.Url is null ? null : Redactor.Redact(ev.Url);
+        return new GalleryItem(id, kind, ev.Source, ev.Evidence, ev.User, CacheId: null, ev.OriginalPath, url, status,
             FoundInFreeSpace: false, Best: image, Images: image is null ? [] : [image],
             Dates: sources.Count == 0 ? null : new DateWindow(ev.FirstSeenUtc, ev.LastSeenUtc ?? ev.FirstSeenUtc, "Medium", sources),
             Note: ev.Note);

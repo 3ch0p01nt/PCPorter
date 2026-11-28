@@ -61,6 +61,27 @@ public class GalleryReportTests
     }
 
     [Fact]
+    public void Secrets_in_urls_warnings_and_notes_are_masked()
+    {
+        var r = Result(null, "https://cdn.example.com/a.png?sig=SECRET1&w=200");
+        r = r with { Warnings = ["Edge cache: could not read https://e.com/x?access_token=SECRET2"], Notes = ["note with password=SECRET3"] };
+        var html = GalleryReport.Render(r, Meta);
+        Assert.DoesNotContain("SECRET", html);
+        Assert.Contains("cdn.example.com/a.png", html);
+    }
+
+    [Fact]
+    public void Cached_image_urls_are_masked_before_they_reach_the_case()
+    {
+        var ev = new ImageEvidence("Edge cache (Default)", EvidenceLevel.LoadedByWebPage, "bob", null,
+            "https://bob:hunter2@img.example.com/p.jpg?token=SECRET4", null, null, null, null);
+        var item = EvidenceMapper.ToItem(ev, new ImageStore(Path.GetTempPath()), new OriginalLocator());
+        Assert.DoesNotContain("SECRET4", item.Url);
+        Assert.DoesNotContain("hunter2", item.Url);
+        Assert.StartsWith("https://bob:", item.Url);
+    }
+
+    [Fact]
     public void Every_original_status_has_a_label_help_text_and_filter()
     {
         var html = GalleryReport.Render(Result(null), Meta);
