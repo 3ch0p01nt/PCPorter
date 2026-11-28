@@ -144,7 +144,7 @@
   <div class="sr" id="live" aria-live="polite"></div>
   <div id="print"></div>
 
-  <details>
+  <details id="processing">
     <summary>Cache files read and processing notes</summary>
     <table id="files"><thead><tr><th>User</th><th>File</th><th>Format</th><th>Pictures</th><th>Without picture</th><th>Warnings</th></tr></thead><tbody></tbody></table>
     <ul id="warnings"></ul>
@@ -163,6 +163,7 @@
   <div class="dlg-body">
     <div>
       <div class="big" id="big" title="Click to zoom to actual pixels; scroll to zoom; drag to move"><img id="dlg-img" alt=""></div>
+      <div class="empty" id="dlg-noprev" hidden></div>
       <div class="sizes" id="dlg-sizes" role="group" aria-label="Stored sizes"></div>
     </div>
     <div>
@@ -187,6 +188,15 @@
   const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
                   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked (private mode / file://) */ } } };
   const fileUrl = f => IMG + f.split("/").map(encodeURIComponent).join("/");
+  // Formats a browser can draw; others (HEIC, TIFF, camera RAW...) are kept as .bin files and get a placeholder.
+  const canShow = f => /\.(jpe?g|png|gif|bmp|webp|ico|avif|svg)$/i.test(f || "");
+  const NO_PREVIEW = "No preview - this picture's format can't be shown in a browser (the file is kept in the case)";
+  const picOrPlaceholder = (img, alt, cls) => {
+    if (!canShow(img.f)) return el("div", { className: cls, textContent: NO_PREVIEW });
+    const e = el("img", { loading: "lazy", decoding: "async", src: fileUrl(img.f), alt });
+    e.onerror = () => e.replaceWith(el("div", { className: cls, textContent: NO_PREVIEW }));
+    return e;
+  };
   const baseName = p => p ? p.split(/[\\/]/).filter(Boolean).pop() : null;
   const hostOf = u => { try { return new URL(u).hostname || "unknown"; } catch { return "unknown"; } };
   const folderOf = p => { if (!p) return null; const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/")); return i > 0 ? p.slice(0, i) : p; };
@@ -303,7 +313,12 @@
     [...$("hist").children].forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === month)));
     $("count").textContent = `${view.length.toLocaleString()} of ${items.length.toLocaleString()} shown`;
     $("empty").hidden = view.length > 0;
-    if (!view.length) { const active = FILTERS.filter(k => $(k).value && k !== "sort" && k !== "group").length + (month ? 1 : 0);
+    if (!items.length) {
+      const w = (data.warnings || []).length;
+      $("empty").replaceChildren(`No pictures were found for the accounts included. ${w ? `${w.toLocaleString()} warning(s) say what could not be read: ` : "No warnings were recorded; the processing notes list the cache files that were read. "}`,
+        el("button", { textContent: "Show the processing notes", onclick: () => { $("processing").open = true; $("processing").scrollIntoView(); } }));
+      if (w) $("processing").open = true;
+    } else if (!view.length) { const active = FILTERS.filter(k => $(k).value && k !== "sort" && k !== "group").length + (month ? 1 : 0);
       $("empty").replaceChildren(`No pictures match ${active ? "these " + active + " filter(s)" : "this view"}. `, el("button", { textContent: "Clear filters", onclick: clearFilters })); }
     layout(); writeHash();
   }
@@ -350,7 +365,7 @@
   function card(i) {
     const name = baseName(i.originalPath) || (i.url ? i.url.replace(/^https?:\/\//, "").slice(0, 80) : (i.cacheId || i.id));
     const pic = i.images.length
-      ? el("img", { loading: "lazy", decoding: "async", src: fileUrl(i.images[0].f), alt: name })
+      ? picOrPlaceholder(i.images[0], name, "noimg")
       : el("div", { className: "noimg", textContent: "No picture kept - Windows only recorded that it showed this item" });
     const badges = el("div", {}, [el("span", { className: "badge s-" + i.status, textContent: statusText[i.status] ? statusText[i.status].replace("Original ", "") : i.status })]);
     badges.firstChild.setAttribute("aria-label", statusText[i.status] || i.status);
@@ -358,6 +373,7 @@
     if (tags[i.id]) badges.append(el("span", { className: "badge tag", textContent: tags[i.id] }));
     const pick = el("input", { type: "checkbox", className: "pick", checked: selected.has(i.id), ariaLabel: "Select " + name });
     pick.onclick = e => { e.stopPropagation(); toggleSelect(i, e.shiftKey, pick.checked); };
+    pick.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); pick.click(); } e.stopPropagation(); };   // Space/Enter select, never open the viewer
     const c = el("div", { className: "card" + (selected.has(i.id) ? " sel" : ""), tabIndex: 0, role: "gridcell" },
       [el("div", { className: "img" }, [pic]), el("div", { className: "cap" }, [el("div", { className: "name", textContent: name, title: i.originalPath || i.url || "" }), badges]), pick]);
     if (i.dup != null && dupSize[i.dup] > 1) c.append(el("span", { className: "dup", textContent: `+${dupSize[i.dup] - 1} similar` }));
@@ -368,6 +384,7 @@
   }
   // Grid keyboard navigation
   function keyNav(e, i, c) {
+    if (e.target !== c) return;                     // keys on the checkbox or other controls inside the card are theirs
     const n = view.indexOf(i); let t = null;
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(n, c); return; }
     if (e.key === "ArrowRight") t = n + 1; else if (e.key === "ArrowLeft") t = n - 1;
@@ -392,7 +409,13 @@
     const ids = range && lastPick >= 0 ? view.slice(Math.min(n, lastPick), Math.max(n, lastPick) + 1).map(x => x.id) : [i.id];
     ids.forEach(id => on ? selected.add(id) : selected.delete(id)); lastPick = n; selChanged();
   }
-  function selChanged() { $("sel-count").textContent = `${selected.size.toLocaleString()} selected`; rendered.clear(); $("scroller").replaceChildren(); draw(); }
+  function selChanged() {
+    // Redraw the cards, then put the keyboard focus back where it was (the same card or its checkbox).
+    const a = document.activeElement, card = a && a.closest ? a.closest("#scroller .card") : null;
+    const n = card ? card.dataset.n : null, onPick = !!(a && a.classList && a.classList.contains("pick"));
+    $("sel-count").textContent = `${selected.size.toLocaleString()} selected`; rendered.clear(); $("scroller").replaceChildren(); draw();
+    if (n != null) { const again = $("scroller").querySelector(`.card[data-n="${n}"]`); if (again) (onPick ? again.querySelector(".pick") : again).focus(); }
+  }
   $("sel-all").onclick = () => { view.forEach(i => selected.add(i.id)); selChanged(); };
   $("sel-none").onclick = () => { selected.clear(); selChanged(); };
   const tagSel = t => { (selected.size ? [...selected] : []).forEach(id => { if (t) tags[id] = t; else delete tags[id]; });
@@ -413,7 +436,7 @@
 
   // Print contact sheet (selected, else everything shown)
   function buildPrint() {
-    const list = (selected.size ? view.filter(i => selected.has(i.id)) : view).filter(i => i.images.length);
+    const list = (selected.size ? view.filter(i => selected.has(i.id)) : view).filter(i => i.images.length && canShow(i.images[0].f));
     $("print").replaceChildren(...list.map(i => el("figure", {}, [el("img", { src: fileUrl(i.images[0].f), alt: "" }),
       el("figcaption", { textContent: `${i.originalPath || i.url || i.cacheId} - ${statusText[i.status] || i.status}${i.cacheId ? " - " + i.cacheId : ""}` })])));
   }
@@ -427,9 +450,11 @@
     const i = view[cur];
     $("dlg-pos").textContent = `${cur + 1} of ${view.length.toLocaleString()}`;
     $("dlg-title").textContent = i.originalPath || i.url || "Original file unknown";
-    const pick = img => { setZoom(1); $("dlg-img").src = fileUrl(img.f); $("dlg-img").alt = $("dlg-title").textContent;
+    const pick = img => { setZoom(1);
+      const ok = canShow(img.f); $("big").hidden = !ok; $("dlg-noprev").hidden = ok; $("dlg-noprev").textContent = ok ? "" : NO_PREVIEW;
+      if (ok) { $("dlg-img").src = fileUrl(img.f); $("dlg-img").alt = $("dlg-title").textContent; } else $("dlg-img").removeAttribute("src");
       [...$("dlg-sizes").children].forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === img.f))); };
-    $("big").hidden = !i.images.length;
+    $("big").hidden = !i.images.length; $("dlg-noprev").hidden = true;
     const rows = [
       ["Record", `${i.source} - ${evidenceText[i.evidence] || i.evidence}`],
       ["Original", i.originalPath || (i.url ? "Web address below" : "Not recorded")],
@@ -443,11 +468,11 @@
     ].filter(r => r[1]);
     $("dlg-dl").replaceChildren(...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]));
     $("dlg-src").replaceChildren(...((i.dates && i.dates.sources) || ["No time information for this record."]).map(s => el("li", { textContent: s })));
-    $("dlg-sizes").replaceChildren(...i.images.map(img => { const b = el("button", {}, [el("img", { src: fileUrl(img.f), alt: "" }), el("span", { textContent: `${img.s}${img.w ? ` ${img.w}x${img.h}` : ""}${img.r ? " (free space)" : ""}${img.rp ? ` (restore point ${img.rp.slice(0, 10)})` : ""}` })]);
+    $("dlg-sizes").replaceChildren(...i.images.map(img => { const b = el("button", {}, [canShow(img.f) ? el("img", { src: fileUrl(img.f), alt: "" }) : el("span", { textContent: "No preview" }), el("span", { textContent: `${img.s}${img.w ? ` ${img.w}x${img.h}` : ""}${img.r ? " (free space)" : ""}${img.rp ? ` (restore point ${img.rp.slice(0, 10)})` : ""}` })]);
       b.dataset.f = img.f; b.onclick = () => pick(img); return b; }));
     const dups = i.dup != null && dupSize[i.dup] > 1 ? items.filter(x => x.dup === i.dup && x !== i) : [];
     $("dlg-dups").replaceChildren(...(dups.length ? [el("h3", { style: "font-size:13px;margin:12px 0 4px", textContent: `${dups.length} similar picture(s)` }),
-      el("div", { className: "sizes" }, dups.slice(0, 24).map(d => { const b = el("button", { title: d.originalPath || d.url || d.cacheId }, d.images.length ? [el("img", { src: fileUrl(d.images[0].f), alt: "" })] : []);
+      el("div", { className: "sizes" }, dups.slice(0, 24).map(d => { const b = el("button", { title: d.originalPath || d.url || d.cacheId }, d.images.length && canShow(d.images[0].f) ? [el("img", { src: fileUrl(d.images[0].f), alt: "" })] : [el("span", { textContent: "No preview" })]);
         b.onclick = () => { const k = view.indexOf(d); if (k >= 0) { cur = k; show(); } }; return b; }))] : []));
     if (i.images.length) pick(i.images[0]);
     $("dlg-prev").disabled = cur <= 0; $("dlg-next").disabled = cur >= view.length - 1;
