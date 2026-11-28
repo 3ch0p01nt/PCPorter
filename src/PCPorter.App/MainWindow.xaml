@@ -3,7 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:views="clr-namespace:PCPorter.App.Views"
-    Title="PCPorter" Width="1200" Height="780" MinWidth="900" MinHeight="600"
+    Title="PCPorter" Width="1200" Height="780" MinWidth="760" MinHeight="500"
     WindowBackdropType="Mica" ExtendsContentIntoTitleBar="True" WindowStartupLocation="CenterScreen">
   <Grid>
     <Grid.RowDefinitions>
