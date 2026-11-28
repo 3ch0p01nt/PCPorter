@@ -8,6 +8,12 @@ structure, test suite, speed and size, compatibility across PCs, threat model of
 - CRITICAL (checked, fixed in 3d51988): a crafted `-journal` from an infected old drive could make SQLite delete any
   file with admin rights (super-journal rollback). The journal is no longer copied; a test proves it is never read.
 
+## P0 status (2026-11-28): ALL DONE
+Merged at 8fe0e34 (version 0.1.0+20261128.8fe0e34): 1,292 tests ALL PASSED (full level), elevated release run ALL
+PASSED (588 s), zip built through the gate (EXE SHA-256 4543D8C9...). Not verifiable here: elevation with a second
+admin account, hibernated/dirty/BitLocker drives, real exFAT/FAT32 sticks, USB backup-drive ranking (this PC has C: only).
+GUI checklist automated in `scripts/regress/gui-check.ps1` (41 pass, 4 fail - the two real ones fixed in round 2).
+
 ## P0 - correctness, safety, things that break on real PCs (small to medium)
 | # | Gap | Fix | Source |
 |---|---|---|---|
