@@ -123,7 +123,8 @@ public partial class ScanPage : Page
         });
         try
         {
-            var r = await Task.Run(() => ScanSetup.Run(outRoot, new ScanJobOptions(offline, false, _elevated), progress, _cts.Token));
+            var cts = _cts;
+            var r = await RunningJobs.Instance.Track(cts, Task.Run(() => ScanSetup.Run(outRoot, new ScanJobOptions(offline, false, _elevated), progress, cts.Token)));
             _report = r.ReportPath; _case = r.CaseFolder;
             foreach (var run in r.Run.Runs)
                 (_cards.FirstOrDefault(c => c.Title == run.Collector) ?? AddCard(run.Collector)).State = Describe(run.Status, run.Items);

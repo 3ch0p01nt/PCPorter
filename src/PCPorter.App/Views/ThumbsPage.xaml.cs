@@ -75,8 +75,9 @@ public partial class ThumbsPage : Page
         var progress = new Progress<string>(m => Status.Text = PCPorter.Core.Security.Redactor.Redact(m));   // UI thread stays free: the job runs on a worker
         try
         {
-            var r = await Task.Run(() => ThumbnailJob.Run(target, progress: progress,
-                options: GalleryJobFactory.Options(settings, _elevated, progress), ct: _cts.Token));
+            var cts = _cts;
+            var r = await RunningJobs.Instance.Track(cts, Task.Run(() => ThumbnailJob.Run(target, progress: progress,
+                options: GalleryJobFactory.Options(settings, _elevated, progress), ct: cts.Token)));
             _reportPath = r.ReportPath; _caseFolder = r.CaseFolder;
             var items = r.Scan.Items;
             var msg = $"{items.Count(i => i.Kind == "thumbnail"):N0} thumbnails ({items.Count(i => i.Status == OriginalStatus.Deleted):N0} with deleted originals), " +

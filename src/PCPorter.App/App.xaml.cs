@@ -3,6 +3,8 @@ using System.Security.Principal;
 using System.Windows;
 using PCPorter.App.Infrastructure;
 using PCPorter.Core.Cli;
+using PCPorter.Core.Security;
+using PCPorter.Core.Snapshots;
 using Serilog;
 
 namespace PCPorter.App;
@@ -49,6 +51,29 @@ public partial class App : Application
         base.OnStartup(e);
         Log.Information("PCPorter started");
         new MainWindow().Show();
+        if (AppFolders.IsElevated) _ = Task.Run(CleanUpShadowCopies);
+    }
+
+    /// <summary>Log-off or shut-down: no dialog is possible, so stop any job and give it a few seconds to clean up.</summary>
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        if (RunningJobs.Instance.Any)
+        {
+            Log.Information("Windows is ending the session ({Reason}): stopping the running job", e.ReasonSessionEnding);
+            if (!RunningJobs.Instance.StopAll(TimeSpan.FromSeconds(5))) Log.Warning("A job did not stop before the session ended");
+        }
+        base.OnSessionEnding(e);
+    }
+
+    /// <summary>Temporary shadow copies left by a PCPorter run that crashed or was killed (only ones PCPorter made).</summary>
+    static void CleanUpShadowCopies()
+    {
+        try
+        {
+            var removed = new VssSnapshotProvider().CleanUpStale();
+            if (removed > 0) Log.Information("Removed {Count} shadow copies left behind by an earlier PCPorter run", removed);
+        }
+        catch (Exception ex) { Log.Warning(ex, "Could not check for shadow copies left behind by an earlier run"); }
     }
 
     protected override void OnExit(ExitEventArgs e)

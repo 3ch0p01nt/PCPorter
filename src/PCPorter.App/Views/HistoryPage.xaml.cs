@@ -140,7 +140,8 @@ public partial class HistoryPage : Page
         Announce("Building the web history report...");
         try
         {
-            var r = await Task.Run(() => HistorySetup.Run(request, _elevated, progress, ct: _cts.Token));
+            var cts = _cts;
+            var r = await RunningJobs.Instance.Track(cts, Task.Run(() => HistorySetup.Run(request, _elevated, progress, ct: cts.Token)));
             _report = r.ReportPath; _case = r.CaseFolder;
             var s = HistoryJob.Summarize(r);
             var found = HistorySetup.Describe(s);
