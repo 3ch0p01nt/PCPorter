@@ -50,9 +50,21 @@ public static class WindowsDrives
             try { (d.IsReady ? ready : notReady).Add(root); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { unreadable.Add(root); }
         }
-        var scan = new OfflineVolumeFinder(new WmiClient(), () => ready, runningWindowsDrive: running).Find();
+        var scan = new OfflineVolumeFinder(new WmiClient(), () => ready, runningWindowsDrive: running, readOs: SafeReadOs).Find();
         // Only the two checks the picker shows (the change-journal position is for a scan's before/after comparison).
         return Choices(scan, notReady, unreadable, root => new VolumeSafetyReport(VolumeSafety.IsHibernated(root), VolumeSafety.IsDirty(root), null));
+    }
+
+    /// <summary>
+    /// The OS name from an untrusted drive's hive. The finder turns read errors into a note; anything else a damaged
+    /// hive throws must not end the app (the picker runs from an async void handler): the drive is then just "Windows found".
+    /// </summary>
+    static (string? OsName, string? Build) SafeReadOs(string root)
+    {
+        try { return OfflineVolumeFinder.ReadOs(root); }
+        catch (Exception e) when (e is not (IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException
+                                           or OutOfMemoryException or StackOverflowException))
+        { return (null, null); }
     }
 
     /// <summary>
