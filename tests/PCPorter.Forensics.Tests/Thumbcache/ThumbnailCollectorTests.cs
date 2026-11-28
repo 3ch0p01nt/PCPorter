@@ -107,6 +107,32 @@ public class ThumbnailCollectorTests : IDisposable
     }
 
     [Fact]
+    public void Restore_point_copies_merge_into_the_live_item()
+    {
+        var live = Explorer("bob", ("thumbcache_96.db", new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Png).Build()));
+        var rpDir = Path.Combine(_root, "rp", "Explorer");
+        Directory.CreateDirectory(rpDir);
+        File.WriteAllBytes(Path.Combine(rpDir, "thumbcache_96.db"),
+            new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Jpeg).Entry(2, ThumbcacheBuilder.Png).Build());
+        var created = new DateTimeOffset(2026, 3, 10, 9, 0, 0, TimeSpan.Zero);
+
+        var result = Collect(new NoPathResolver(), new ThumbnailSource("bob", live), new ThumbnailSource("bob", rpDir, created));
+
+        Assert.Equal(2, result.Items.Count);                                     // not 3: the copy of #1 is merged
+        Assert.All(result.Items, i => Assert.Equal("bob", i.User));
+        var both = result.Items.Single(i => i.CacheId == "0000000000000001");
+        Assert.False(both.OnlyInRestorePoints);
+        Assert.Equal([created], both.RestorePoints!);
+        Assert.Equal(2, both.Images.Count);
+        Assert.Null(both.Best!.RestorePoint);                                    // the live copy is shown first
+        var old = result.Items.Single(i => i.CacheId == "0000000000000002");
+        Assert.True(old.OnlyInRestorePoints);
+        Assert.Contains("only in a restore point", old.Note);
+        Assert.Equal(2, result.Summary.Thumbnails);
+        Assert.Equal(1, result.Summary.OnlyInRestorePoints);
+    }
+
+    [Fact]
     public void Icons_are_separate_and_never_resolved()
     {
         var dir = Explorer("bob",

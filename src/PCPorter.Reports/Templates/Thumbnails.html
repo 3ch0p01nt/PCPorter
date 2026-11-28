@@ -435,14 +435,15 @@
       ["Original", i.originalPath || (i.url ? "Web address below" : "Not recorded")],
       ["Status", `${statusText[i.status] || i.status}: ${statusHelp[i.status] || ""}`],
       ["Web address", i.url], ["User", i.user], ["Cache ID", i.cacheId],
-      ["Found in free space", i.freeSpace ? "Yes - outside the cache's active part; it may be an older copy. This alone does not prove deletion." : null],
+      ["Restore points", i.restorePoints ? (i.onlyRestore ? "Found only in restore point(s) from " : "Also in restore point(s) from ") + i.restorePoints.map(d => d.slice(0, 10)).join(", ") : null],
+      ["Found in free space", i.freeSpace ?"Yes - outside the cache's active part; it may be an older copy. This alone does not prove deletion." : null],
       ["Displayed between", i.dates ? `${fmt(i.dates.after)}  and  ${fmt(i.dates.before)}  (confidence: ${i.dates.confidence})` : null],
       ["Largest copy", i.images.length ? `${i.images[0].w || "?"} x ${i.images[0].h || "?"} (${i.images[0].s})` : "No picture kept"],
       ["Tag", tags[i.id]], ["Note", i.note],
     ].filter(r => r[1]);
     $("dlg-dl").replaceChildren(...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]));
     $("dlg-src").replaceChildren(...((i.dates && i.dates.sources) || ["No time information for this record."]).map(s => el("li", { textContent: s })));
-    $("dlg-sizes").replaceChildren(...i.images.map(img => { const b = el("button", {}, [el("img", { src: fileUrl(img.f), alt: "" }), el("span", { textContent: `${img.s}${img.w ? ` ${img.w}x${img.h}` : ""}${img.r ? " (free space)" : ""}` })]);
+    $("dlg-sizes").replaceChildren(...i.images.map(img => { const b = el("button", {}, [el("img", { src: fileUrl(img.f), alt: "" }), el("span", { textContent: `${img.s}${img.w ? ` ${img.w}x${img.h}` : ""}${img.r ? " (free space)" : ""}${img.rp ? ` (restore point ${img.rp.slice(0, 10)})` : ""}` })]);
       b.dataset.f = img.f; b.onclick = () => pick(img); return b; }));
     const dups = i.dup != null && dupSize[i.dup] > 1 ? items.filter(x => x.dup === i.dup && x !== i) : [];
     $("dlg-dups").replaceChildren(...(dups.length ? [el("h3", { style: "font-size:13px;margin:12px 0 4px", textContent: `${dups.length} similar picture(s)` }),

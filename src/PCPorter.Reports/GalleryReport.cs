@@ -65,9 +65,9 @@ public static class GalleryReport
     {
         i.Id, i.Kind, i.Source, Evidence = i.Evidence.ToString(), i.User, i.CacheId, i.OriginalPath, i.Url,
         Status = i.Status.ToString(), FreeSpace = i.FoundInFreeSpace ? true : (bool?)null,
-        Images = i.Images.Select(x => new { s = x.SizeClass, w = x.Width, h = x.Height, f = x.File, r = x.FoundInFreeSpace ? true : (bool?)null }),
+        Images = i.Images.Select(x => new { s = x.SizeClass, w = x.Width, h = x.Height, f = x.File, r = x.FoundInFreeSpace ? true : (bool?)null, rp = x.RestorePoint }),
         Dates = i.Dates is null ? null : new { after = i.Dates.After, before = i.Dates.Before, confidence = i.Dates.Confidence, sources = i.Dates.Sources },
-        i.Note, Dup = i.DupGroup,
+        i.Note, Dup = i.DupGroup, i.RestorePoints, OnlyRestore = i.OnlyInRestorePoints ? true : (bool?)null,
     };
 
     static string LoadTemplate()

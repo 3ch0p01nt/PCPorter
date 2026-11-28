@@ -80,7 +80,7 @@ public static class GalleryJobFactory
             {
                 if (!src.ExplorerFolder.StartsWith(@"C:\", StringComparison.OrdinalIgnoreCase)) continue;
                 var mapped = VssSnapshotProvider.MapPath(device, @"C:\", src.ExplorerFolder);
-                if (Directory.Exists(mapped)) list.Add(new ThumbnailSource($"{src.User} (restore point {created:yyyy-MM-dd})", mapped));
+                if (Directory.Exists(mapped)) list.Add(new ThumbnailSource(src.User, mapped, RestorePoint: created));
             }
         return list;
     }
