@@ -13,6 +13,7 @@ sealed class FakeProbe : ILocationProbe
     public Dictionary<string, EntryInfo> Entries = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> Finals = new(StringComparer.OrdinalIgnoreCase);
     public List<string> Roots = [];
+    public HashSet<string> ReadOnly = new(StringComparer.OrdinalIgnoreCase);
 
     public static readonly EntryInfo Folder = new(FileAttributes.Directory, 0);
 
@@ -23,6 +24,7 @@ sealed class FakeProbe : ILocationProbe
     public string? FinalPath(string path) => Finals.GetValueOrDefault(path, path);
     public string? NtPath(string path) => @"\Device\HarddiskVolume3\" + path[3..];
     public IEnumerable<string> SyncRoots() => Roots;
+    public bool? IsReadOnlyVolume(string root) => ReadOnly.Contains(root);
 }
 
 public class CaseLocationTests
@@ -62,6 +64,20 @@ public class CaseLocationTests
     [InlineData(@"\\?\D:\Cases\a\very\long\path")]                 // long local path: not a network path
     [InlineData(@"E:\")]
     public void Local_or_external_folders_are_allowed(string path) => Assert.True(Check(path).IsAllowed, Check(path).Reason);
+
+    [Theory]
+    [InlineData(@"F:\")]
+    [InlineData(@"F:\PCPorter
+ew")]
+    public void A_write_protected_drive_is_refused_up_front(string path)
+    {
+        var probe = new FakeProbe();
+        probe.ReadOnly.Add(@"F:\");
+        var r = Check(path, probe);
+        Assert.False(r.IsAllowed);
+        Assert.Contains("write-protected", r.Reason);
+        Assert.True(Check(@"E:\PCPorter", probe).IsAllowed);
+    }
 
     [Theory]
     [InlineData("")]

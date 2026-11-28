@@ -70,6 +70,10 @@ public static class CaseLocation
             if (full.Length == 2) full += "\\";
         }
 
+        // A write-protect switch (SD cards, some sticks) or a read-only mount: say so now, not after a failed save.
+        if (probe.IsReadOnlyVolume(full[..3]) == true)
+            return No($"Drive {full[..2]} is write-protected (read-only), so nothing can be saved on it. Turn off its write-protect switch, or pick another drive.");
+
         var volume = probe.Volume(full[..3]);
         if (volume.Label?.Contains("Google Drive", StringComparison.OrdinalIgnoreCase) == true
             || (string.Equals(volume.FileSystem, "FAT32", StringComparison.OrdinalIgnoreCase) && probe.Entry(full[..3] + "My Drive") is not null)
@@ -183,6 +187,7 @@ internal interface ILocationProbe
     string? FinalPath(string path);
     string? NtPath(string path);
     IEnumerable<string> SyncRoots();
+    bool? IsReadOnlyVolume(string root);
 }
 
 internal sealed class WindowsProbe : ILocationProbe
@@ -200,6 +205,7 @@ internal sealed class WindowsProbe : ILocationProbe
     public EntryInfo? Entry(string path) => FileIdentity.Entry(path);
     public string? FinalPath(string path) => FileIdentity.FinalPath(path);
     public string? NtPath(string path) => FileIdentity.NtPath(path);
+    public bool? IsReadOnlyVolume(string root) => FileIdentity.IsReadOnlyVolume(root);
 
     /// <summary>
     /// Every cloud sync root Windows knows: SyncRootManager (all accounts: OneDrive, SharePoint, Dropbox, iCloud, Box,

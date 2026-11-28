@@ -58,6 +58,31 @@ function Invoke-Pcp {
 
 function Read-Json([string] $Text) { try { $Text | ConvertFrom-Json } catch { $null } }
 
+# ---- Save drives: real NTFS/exFAT/FAT32 volumes on small virtual disks (most USB backup drives are exFAT) ----
+$VhdDir = Join-Path $OutRoot 'save-drives'
+function Remove-TestDrives {
+    foreach ($v in @(Get-ChildItem -LiteralPath $VhdDir -Filter *.vhdx -ErrorAction SilentlyContinue)) {
+        try { Dismount-DiskImage -ImagePath $v.FullName -ErrorAction SilentlyContinue | Out-Null } catch { }
+        Remove-Item -LiteralPath $v.FullName -Force -ErrorAction SilentlyContinue
+    }
+}
+function New-TestDrive([string] $Name, [string] $FileSystem, [int] $SizeMB) {
+    <# A formatted volume with a drive letter, or $null. Formatted BEFORE it gets a letter, so Explorer never offers to format it. #>
+    New-Item -ItemType Directory -Force $VhdDir | Out-Null
+    $vhd = Join-Path $VhdDir "$Name.vhdx"
+    "create vdisk file=`"$vhd`" maximum=$SizeMB type=expandable" | diskpart.exe | Out-Null
+    if (-not (Test-Path $vhd)) { return $null }
+    $disk = Mount-DiskImage -ImagePath $vhd -NoDriveLetter -PassThru | Get-Disk
+    Initialize-Disk -Number $disk.Number -PartitionStyle MBR
+    $part = New-Partition -DiskNumber $disk.Number -UseMaximumSize
+    $label = ('PCPT ' + $Name).Substring(0, [Math]::Min(11, 5 + $Name.Length))
+    Format-Volume -Partition $part -FileSystem $FileSystem -NewFileSystemLabel $label -Confirm:$false | Out-Null
+    $part | Add-PartitionAccessPath -AssignDriveLetter
+    $letter = (Get-Partition -DiskNumber $disk.Number -PartitionNumber $part.PartitionNumber).DriveLetter
+    if (-not $letter -or $letter -eq [char]0) { return $null }
+    [pscustomobject]@{ Name = $Name; FileSystem = $FileSystem; Root = "${letter}:\"; Vhd = $vhd; DiskNumber = $disk.Number }
+}
+
 function Get-Fingerprint([string] $Root) {
     $map = [ordered]@{}
     Get-ChildItem -LiteralPath $Root -Recurse -Force | Sort-Object FullName | ForEach-Object {
@@ -87,6 +112,14 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     $exe = Join-Path $RunDir 'PCPorter.exe'
     $facts.exeSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash
     $facts.exeBytes = (Get-Item $exe).Length
+
+    # Save drives for section 4b (and the gallery run): removed again at the end.
+    Remove-TestDrives
+    $drives = [ordered]@{}
+    foreach ($d in @(@('NTFS', 'NTFS', 256), @('exFAT', 'exFAT', 256), @('FAT32', 'FAT32', 256), @('Full', 'NTFS', 16), @('ReadOnly', 'exFAT', 64))) {
+        try { $drives[$d[0]] = New-TestDrive $d[0] $d[1] $d[2] } catch { $drives[$d[0]] = $null; "$($d[0]): $($_.Exception.Message)" | Out-File (Join-Path $out 'save-drives.err.txt') -Append }
+    }
+    Add-Check 'Test save drives created (NTFS, exFAT, FAT32, full, read-only)' (@($drives.Values | Where-Object { $_ }).Count -eq 5) (($drives.Keys | ForEach-Object { "$_=$(if ($drives[$_]) { $drives[$_].Root } else { 'none' })" }) -join ' ')
 
     # The manifest sits in the resources, about 10 MB in (after the ReadyToRun code): search the file in overlapping chunks.
     $manifestFound = $false
@@ -193,12 +226,15 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
         Add-Check 'A OneDrive folder is refused (exit 3) and nothing is written there' ($odr.Code -eq 3 -and -not (Test-Path $target)) "exit $($odr.Code): $((Read-Json $odr.Out).error)"
     } else { Add-Check 'OneDrive refusal' $true 'no OneDrive folder on this PC' -Skip }
 
-    $th = Invoke-Pcp -Name 'thumbs' -Arguments 'thumbs', '--out', "$out\thumbs", '--json'
+    # The gallery (the slowest run, about 6 minutes) saves to the ROOT of the exFAT test drive, like a new USB backup drive.
+    $thumbsOut = if ($drives['exFAT']) { $drives['exFAT'].Root } else { "$out\thumbs" }
+    $th = Invoke-Pcp -Name 'thumbs' -Arguments 'thumbs', '--out', $thumbsOut, '--json'
     $tj = Read-Json $th.Out
     $facts.thumbsSummary = $tj
-    Add-Check 'thumbs: exit 0 or 1 with a JSON summary' ($th.Code -in 0, 1 -and $tj.summary -and $null -ne $tj.exitCode) "exit $($th.Code)" $th.Seconds
-    $thumbCase = Get-ChildItem "$out\thumbs" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'case.db') } | Select-Object -First 1
-    if ($thumbCase) { $cases += $thumbCase.FullName }
+    $thumbCase = Get-ChildItem $thumbsOut -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'case.db') } | Select-Object -First 1
+    Add-Check "thumbs to $thumbsOut ($(if ($drives['exFAT']) { 'exFAT drive root' } else { 'NTFS' })): exit 0 or 1, gallery written" ($th.Code -in 0, 1 -and $tj.summary -and $null -ne $tj.exitCode -and
+        $thumbCase -and (Test-Path (Join-Path $thumbCase.FullName 'Thumbnails\Thumbnails.html'))) "exit $($th.Code)$(if (-not $tj) { ': ' + $th.Out.Trim() })" $th.Seconds
+    if ($thumbCase -and -not $drives['exFAT']) { $cases += $thumbCase.FullName }
     # A cancelled gallery must leave no case folder, but cancelling needs a Ctrl+C delivered to the EXE's console,
     # which this script cannot send to an elevated child reliably. Covered by the manual checklist (section 4).
     Add-Check 'thumbs: a cancelled run leaves no case folder' $true 'not automated: see docs/testing/manual-checklist.md' -Skip
@@ -211,6 +247,55 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     Add-Check 'history: exit 0 or 1, History.html written, work folder gone' ($hl.Code -in 0, 1 -and $hlReport -and (Test-Path -LiteralPath $hlReport) -and
         (Split-Path $hlReport -Leaf) -eq 'History.html' -and -not (Test-Path (Join-Path $hlj.summary.caseFolder 'work'))) "exit $($hl.Code)" $hl.Seconds
     if ($hlj.summary.caseFolder) { $cases += $hlj.summary.caseFolder }
+
+    # ---- 4b. Saving to real backup-drive formats (NTFS, exFAT, FAT32), full and read-only drives ----
+    # Uses the fake old drive as the source (offline runs take seconds). Each format: the drive ROOT and a new folder
+    # with spaces and accented letters; health check and web history. No-ACL formats must say anyone can read the case.
+    if (Test-Path (Join-Path $Fixture 'Windows\System32\config\SOFTWARE')) {
+        foreach ($fsName in 'NTFS', 'exFAT', 'FAT32') {
+            $d = $drives[$fsName]
+            if (-not $d) { Add-Check "$fsName save drive" $false 'test drive could not be created'; continue }
+            $noAcl = $fsName -ne 'NTFS'
+            foreach ($target in @($d.Root, (Join-Path $d.Root 'PCPorter results\Résumé ü 1'))) {
+                $where = if ($target -eq $d.Root) { 'drive root' } else { 'new folder with spaces and accents' }
+                $sv = Invoke-Pcp -Name "save-$fsName-scan-$($where -replace '\W', '')" -Arguments 'scan', '--offline', $Fixture, '--out', $target, '--json', '--quiet'
+                $sj = Read-Json $sv.Out
+                $report = $sj.summary.report
+                $warned = @($sj.folderWarnings | Where-Object { $_ -match 'Anyone with the drive' }).Count -gt 0
+                Add-Check "Health check saves to $fsName $where (exit 1, report written$(if ($noAcl) { ', no-permissions warning' }))" ($sv.Code -eq 1 -and $report -and
+                    (Test-Path -LiteralPath $report) -and $report.StartsWith($d.Root) -and ($warned -eq $noAcl)) "exit $($sv.Code)$(if ($sj.error) { ': ' + $sj.error } elseif (-not $sj) { ': ' + $sv.Out.Trim() })" $sv.Seconds
+                if ($sj.summary.caseFolder -and -not $noAcl) { $cases += $sj.summary.caseFolder }
+            }
+            $hv = Invoke-Pcp -Name "save-$fsName-history" -Arguments 'history', '--offline', $Fixture, '--out', $d.Root, '--json'
+            $hj = Read-Json $hv.Out
+            Add-Check "Web history saves to $fsName drive root (exit 0 or 1, History.html written)" ($hv.Code -in 0, 1 -and $hj.summary.report -and
+                (Test-Path -LiteralPath $hj.summary.report) -and $hj.summary.report.StartsWith($d.Root)) "exit $($hv.Code)$(if ($hj.error) { ': ' + $hj.error } elseif (-not $hj) { ': ' + $hv.Out.Trim() })" $hv.Seconds
+            if ($hj.summary.caseFolder -and -not $noAcl) { $cases += $hj.summary.caseFolder }
+        }
+
+        # A drive with almost no free space: a plain message (never a stack trace) and exit 2. What was saved is kept and named.
+        if ($drives['Full']) {
+            $root = $drives['Full'].Root
+            $free = (Get-Volume -DriveLetter $root[0]).SizeRemaining
+            if ($free -gt 300KB) { fsutil.exe file createnew (Join-Path $root 'filler.bin') ($free - 200KB) | Out-Null }
+            $fv = Invoke-Pcp -Name 'save-full' -Arguments 'scan', '--offline', $Fixture, '--out', $root, '--json', '--quiet'
+            $fj2 = Read-Json $fv.Out
+            $left = @(Get-ChildItem -LiteralPath $root -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'System Volume Information', '$RECYCLE.BIN' })
+            $plain = $fj2.error -and $fj2.error -match 'space' -and $fj2.error -notmatch '   at |Exception'
+            Add-Check 'A full drive: exit 2 with a plain "not enough space" message' ($fv.Code -eq 2 -and $plain) "exit $($fv.Code): $($fj2.error ?? $fv.Out.Trim()); left: $(($left | ForEach-Object Name) -join ', ')" $fv.Seconds
+        } else { Add-Check 'A full drive' $false 'test drive could not be created' }
+
+        # A read-only drive (write-protect switch on an SD card or stick): refused with a plain message.
+        if ($drives['ReadOnly']) {
+            # Read-only and then off/online again, so the mounted volume reports itself read-only (as with a locked SD card).
+            $n = $drives['ReadOnly'].DiskNumber
+            Set-Disk -Number $n -IsReadOnly $true; Set-Disk -Number $n -IsOffline $true; Set-Disk -Number $n -IsOffline $false
+            Start-Sleep -Seconds 2
+            $rv = Invoke-Pcp -Name 'save-readonly' -Arguments 'scan', '--offline', $Fixture, '--out', $drives['ReadOnly'].Root, '--json', '--quiet'
+            $rj = Read-Json $rv.Out
+            Add-Check 'A read-only drive: refused up front with a plain message (exit 3)' ($rv.Code -eq 3 -and $rj.error -match 'write-protected' -and $rj.error -notmatch '   at |Exception') "exit $($rv.Code): $($rj.error ?? $rv.Out.Trim())" $rv.Seconds
+        } else { Add-Check 'A read-only drive' $false 'test drive could not be created' }
+    } else { Add-Check 'Saving to NTFS/exFAT/FAT32 drives' $false "no fixture at $Fixture (regress.ps1 -Level release writes it)" }
 
     # ---- 5. Outputs: private folders, no secrets ----
     $allowed = @('S-1-5-18', 'S-1-5-32-544', $me.User.Value)
@@ -229,6 +314,8 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     }
     Add-Check 'The planted password appears in no output or log' (-not $leaks) ($leaks -join ', ')
 }
+
+Remove-TestDrives
 
 # ---- 6. Timing against the previous run ----
 $last = Join-Path $OutRoot 'smoke-last.json'
