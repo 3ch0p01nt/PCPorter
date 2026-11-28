@@ -103,6 +103,14 @@ public sealed class SourcePresenceTests : IDisposable
     }
 
     [Fact]
+    public void Opening_a_drive_whose_System32_is_a_link_refuses_it()
+    {
+        Outside(@"config\SOFTWARE");
+        if (!Link(@"Windows\System32")) return;
+        Assert.Throws<PCPorter.Core.SourceRejectedException>(() => new OfflineSource(_root, runningWindowsDrive: "Q:\\"));
+    }
+
+    [Fact]
     public void The_drive_picker_does_not_follow_a_linked_Windows_folder()
     {
         Outside(@"System32\config\SOFTWARE");

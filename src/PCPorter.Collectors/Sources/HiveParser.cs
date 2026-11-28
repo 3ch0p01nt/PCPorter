@@ -43,7 +43,8 @@ public static class HiveParser
             bool replayed = false;
             if (dirty)
             {
-                var logs = new[] { hivePath + ".LOG1", hivePath + ".LOG2" }.Where(File.Exists).ToList();
+                // Never through a link: a planted .LOG1 symlink could point at a network share.
+                var logs = new[] { hivePath + ".LOG1", hivePath + ".LOG2" }.Where(SourcePresence.IsFile).ToList();
                 if (logs.Count > 0)
                 {
                     // updateExistingData: true applies the recovered bytes IN MEMORY (verified in the package source:
