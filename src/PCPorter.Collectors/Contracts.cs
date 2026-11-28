@@ -43,5 +43,5 @@ public interface ISignatureChecker
 /// <summary>Used where signatures are not needed (tests, offline without catalogs).</summary>
 public sealed class NoSignatureChecker : ISignatureChecker
 {
-    public SignatureInfo Check(string path) => new(File.Exists(path) ? SignatureStatus.NotChecked : SignatureStatus.FileMissing, null, false);
+    public SignatureInfo Check(string path) => new(SourcePresence.Of(path) == Presence.Missing ? SignatureStatus.FileMissing : SignatureStatus.NotChecked, null, false);
 }

@@ -82,12 +82,12 @@ public static class PackageManagersInventory
                 var current = CurrentFolder(source, appDir);
                 if (current is null) continue;
                 var manifest = Path.Combine(current, "manifest.json");
-                if (!File.Exists(manifest)) continue;
+                if (!SourcePresence.IsFile(manifest)) continue;
                 string? version, bucket = null, arch = null;
                 using (var doc = JsonDocument.Parse(GameLibraries.ReadText(manifest), JsonOpts))
                     version = Str(doc.RootElement, "version");
                 var install = Path.Combine(current, "install.json");
-                if (File.Exists(install))
+                if (SourcePresence.IsFile(install))
                 {
                     using var doc = JsonDocument.Parse(GameLibraries.ReadText(install), JsonOpts);
                     bucket = Str(doc.RootElement, "bucket");
@@ -106,12 +106,14 @@ public static class PackageManagersInventory
     static string? CurrentFolder(ISystemSource source, string appDir)
     {
         var current = new DirectoryInfo(Path.Combine(appDir, "current"));
-        if (current.Exists && !current.Attributes.HasFlag(FileAttributes.ReparsePoint)) return current.FullName;
+        if (current.Exists && !current.Attributes.HasFlag(FileAttributes.ReparsePoint) && SourcePresence.IsFolder(current.FullName))
+            return current.FullName;   // a real folder, not a link
+        // The junction's target is read from the link itself (not followed); the mapped target must be a real folder.
         if (current.Exists && current.LinkTarget is { } target && source.MapPath(target) is { } mapped
-            && Directory.Exists(mapped) && !new DirectoryInfo(mapped).Attributes.HasFlag(FileAttributes.ReparsePoint))
+            && SourcePresence.IsFolder(mapped) && !new DirectoryInfo(mapped).Attributes.HasFlag(FileAttributes.ReparsePoint))
             return mapped;
         return SourceFiles.Folders(appDir)
-            .Where(d => !Path.GetFileName(d).Equals("current", StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(d, "manifest.json")))
+            .Where(d => !Path.GetFileName(d).Equals("current", StringComparison.OrdinalIgnoreCase) && SourcePresence.IsFile(Path.Combine(d, "manifest.json")))
             .OrderByDescending(d => Directory.GetLastWriteTimeUtc(d))
             .FirstOrDefault();
     }

@@ -38,12 +38,13 @@ public static class PersistencePaths
         catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException) { return null; }
     }
 
-    public static bool FileExists(ISystemSource source, string scannedPath, UserProfile? user)
-    {
-        var mapped = MapFile(source, scannedPath, user);
-        try { return mapped is not null && File.Exists(mapped); }
-        catch (Exception e) when (e is ArgumentException or IOException or UnauthorizedAccessException) { return false; }
-    }
+    /// <summary>
+    /// For splitting a command line into program and arguments: true when the file exists. A path behind a link is
+    /// not followed (it may point at a network share): false, so the split falls back to the executable-extension
+    /// rule; whether the file is missing is decided by the signature check, which calls it "not checked".
+    /// </summary>
+    public static bool FileExists(ISystemSource source, string scannedPath, UserProfile? user) =>
+        MapFile(source, scannedPath, user) is { } mapped && SourcePresence.IsFile(mapped);
 
     /// <summary>Plain name for a user hive in locations: HKCU(bob).</summary>
     public static string UserLabel(UserProfile user) => $"HKCU({user.UserName})";

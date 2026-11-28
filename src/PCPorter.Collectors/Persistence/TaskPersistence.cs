@@ -77,8 +77,10 @@ public static class TaskPersistence
                 {
                     var expected = Path.Combine(tasksDir!, te.Path.TrimStart('\\'));
                     var parent = Path.GetDirectoryName(expected)!;
-                    bool parentListable = Directory.Exists(parent) ? CanList(parent) : true;
-                    fileMissing = parentListable && !File.Exists(expected);
+                    // Never through a link (it may point at a network share): behind one, "no task file" cannot be said.
+                    var parentState = SourcePresence.Of(parent);
+                    bool parentListable = parentState == Presence.Present ? CanList(parent) : parentState == Presence.Missing;
+                    fileMissing = parentListable && SourcePresence.Of(expected) == Presence.Missing;
                 }
                 var hidden = fileMissing || !te.HasSd;
                 var actions = te.Id is not null && byId?.Open(te.Id)?.GetBytes("Actions") is { } blob ? ParseActionsBlob(blob) : [];

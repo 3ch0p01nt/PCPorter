@@ -57,7 +57,7 @@ public sealed class OfflineCatalogIndex : IDisposable
     Dictionary<string, List<string>> Build()
     {
         var index = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        if (!Directory.Exists(_catalogFolder))
+        if (!SourcePresence.IsFolder(_catalogFolder))   // never through a link (it may point at a network share)
         {
             _notes.Enqueue($"No catalog folder at {_catalogFolder}; files without an embedded signature are not checked.");
             return index;

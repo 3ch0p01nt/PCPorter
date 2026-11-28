@@ -222,7 +222,7 @@ public sealed class AvDetector : ICollector
     {
         if (string.IsNullOrWhiteSpace(pathToSignedProductExe)) return false;
         if (pathToSignedProductExe.Trim().StartsWith(DefenderUri, StringComparison.OrdinalIgnoreCase)) return winDefendExists;
-        try { return src.MapPath(pathToSignedProductExe) is { } p && File.Exists(p); }
+        try { return src.MapPath(pathToSignedProductExe) is { } p && SourcePresence.IsFile(p); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { return false; }
     }
 
