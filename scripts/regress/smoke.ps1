@@ -240,6 +240,8 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     Add-Check "thumbs to $thumbsOut ($(if ($drives['exFAT']) { 'exFAT drive root' } else { 'NTFS' })): exit 0 or 1, gallery written" ($th.Code -in 0, 1 -and $tj.summary -and $null -ne $tj.exitCode -and
         $thumbCase -and (Test-Path (Join-Path $thumbCase.FullName 'Thumbnails\Thumbnails.html'))) "exit $($th.Code)$(if (-not $tj) { ': ' + $th.Out.Trim() })" $th.Seconds
     if ($thumbCase -and -not $drives['exFAT']) { $cases += $thumbCase.FullName }
+    # The test drive is removed at the end: keep a copy of the gallery so the Edge render check and the leak scan see it.
+    if ($thumbCase -and $drives['exFAT']) { Copy-Item -LiteralPath $thumbCase.FullName -Destination (Join-Path $out 'thumbs-exfat') -Recurse }
     # A cancelled gallery must leave no case folder, but cancelling needs a Ctrl+C delivered to the EXE's console,
     # which this script cannot send to an elevated child reliably. Covered by the manual checklist (section 4).
     Add-Check 'thumbs: a cancelled run leaves no case folder' $true 'not automated: see docs/testing/manual-checklist.md' -Skip
