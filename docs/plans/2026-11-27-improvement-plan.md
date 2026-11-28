@@ -86,3 +86,20 @@ an About "Check for updates" button.
 2. P2 small refactors that backup/restore needs (version, folder warnings, CaseRun, drive picker) - then start backup.
 3. P1 report and app clarity in parallel with backup milestone 1.
 4. Tests and speed items alongside; signing once the route is decided.
+
+## Save-drive audit (2026-11-28)
+A real exFAT USB drive was refused on the owner's PC; the fix and an audit of the same class of problem followed.
+Fixed (6d95d41, release run with real NTFS/exFAT/FAT32/full/read-only virtual drives ALL PASSED): exFAT/FAT32 refused,
+write-protected drive refused late, history "with gaps" on exFAT, "Open results from another PC" on exFAT, FAT32
+per-folder limit in the gallery, full-drive message and suggestion, `\?\` paths on exFAT.
+Still open (lower likelihood):
+- "Find results on connected drives" only looks in `<drive>:\PCPorter` (a case saved to `E:\Backups` is not found).
+- Gallery: a photo's original on a removable drive is checked against whatever has that letter now (often the backup
+  drive): pass the volume serial to `OriginalLocator.Locate` for thumbnails too; say "drive not connected".
+- Temporary copies under `%ProgramData%` can fill a small system drive (search index, WebCache): check free space first.
+- Screenshots/OneDrive folders hardcoded in English (`ScreenshotSource`, `ShellCacheIdResolver`): read User Shell Folders.
+- Remembered save folder trusted by drive letter only: compare the volume serial/label before reusing it.
+- Save-drive suggestion uses `Directory.Exists(root\Windows\System32)` (follows links): use `OfflineVolumeFinder.ExistsOnDrive`.
+- USB detection is BusType 7 only: count NVMe/Thunderbolt/UAS enclosures (BusType 17, SCSI on USB) as external.
+- Paths with commas or over 260 characters when opening results in Explorer.
+- Name-based refusals (`E:\OneDrive` copy on a backup drive) and hardcoded `C:\` in history/gallery/index lookups.
