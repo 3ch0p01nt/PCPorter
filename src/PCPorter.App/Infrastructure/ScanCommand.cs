@@ -52,7 +52,7 @@ public static class ScanCommand
                     : r.Run.AnyFailed || r.Run.AnyPartial ? ExitCodes.Partial : ExitCodes.Ok;
                 var summary = new
                 {
-                    scanId = r.ScanId, casePath = r.CaseFolder, report = r.ReportPath, status = r.Run.Overall,
+                    scanId = r.ScanId, caseFolder = r.CaseFolder, report = r.ReportPath, status = r.Run.Overall,
                     collectors = r.Run.Runs.Select(x => new { name = x.Collector, status = x.Status.ToString(), items = x.Items }),
                     findings = new { worthALook = f.WorthALook, unusual = f.Unusual },
                     warnings = r.Warnings.Count,
