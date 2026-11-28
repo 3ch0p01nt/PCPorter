@@ -37,14 +37,12 @@ public static class ScanCommand
             if (!elevated && parse.GetValue(offline) is null)
                 return Fail(asJson, "Run PCPorter as administrator to scan this PC.", ExitCodes.NotElevated);
 
-            using var cts = new CancellationTokenSource();
-            ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; cts.Cancel(); Console.Error.WriteLine("Stopping after the current step..."); };
-            Console.CancelKeyPress += onCancel;
+            using var cancel = new CliCancel();
             try
             {
                 var r = ScanSetup.Run(parse.GetValue(outOpt)!.FullName,
                     new ScanJobOptions(parse.GetValue(offline)?.FullName, parse.GetValue(defender), elevated),
-                    new ConsoleProgress(!asJson && !parse.GetValue(quiet)), cts.Token);
+                    new ConsoleProgress(!asJson && !parse.GetValue(quiet)), cancel.Token);
                 var f = ScanSetup.CountFindings(r);
                 // Findings win over "partial": an offline scan is always partial (no running Windows to ask about
                 // hardware), and --fail-on must still report what it found.
@@ -66,7 +64,6 @@ public static class ScanCommand
                 return code;
             }
             catch (Exception ex) { return CliOutput.Fail(asJson, ex, "scan"); }
-            finally { Console.CancelKeyPress -= onCancel; }
         });
         return cmd;
     }

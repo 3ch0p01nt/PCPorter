@@ -33,14 +33,12 @@ public static class HistoryCommand
         cmd.SetAction(parse =>
         {
             var json = parse.GetValue(jsonOpt);
-            using var cts = new CancellationTokenSource();
-            ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; cts.Cancel(); Console.Error.WriteLine("Stopping after the current step..."); };
-            Console.CancelKeyPress += onCancel;
+            using var cancel = new CliCancel();
             try
             {
                 var request = new HistoryRequest(parse.GetValue(outOpt)!.FullName, parse.GetValue(offline)?.FullName,
                     parse.GetValue(allUsers), !parse.GetValue(noRestore));
-                var r = HistorySetup.Run(request, elevated, new ConsoleProgress(!json), ct: cts.Token);
+                var r = HistorySetup.Run(request, elevated, new ConsoleProgress(!json), ct: cancel.Token);
                 var s = HistoryJob.Summarize(r);
                 var code = HistoryJob.ExitCode(r);
                 Console.WriteLine(json ? JsonSerializer.Serialize(new { summary = s, exitCode = code }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) :
@@ -51,7 +49,6 @@ public static class HistoryCommand
                 return code;
             }
             catch (Exception ex) { return CliOutput.Fail(json, ex, "history"); }
-            finally { Console.CancelKeyPress -= onCancel; }
         });
         return cmd;
     }
