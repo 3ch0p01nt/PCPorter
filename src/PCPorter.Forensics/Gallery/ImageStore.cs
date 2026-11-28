@@ -52,7 +52,10 @@ public sealed class ImageStore(string folder)
         ImageFormat.Jpeg => "jpg", ImageFormat.Png => "png", ImageFormat.Bmp => "bmp", _ => "bin",
     };
 
-    /// <summary>Extension from image magic bytes (for sources that don't use the thumbcache format enum).</summary>
+    /// <summary>
+    /// Extension from image magic bytes (for sources that don't use the thumbcache format enum). Anything else, SVG
+    /// included, is saved as .bin: an SVG is a document that can run script when opened from the report folder.
+    /// </summary>
     public static string ExtensionFor(ReadOnlySpan<byte> bytes) => bytes switch
     {
         [0xFF, 0xD8, 0xFF, ..] => "jpg",
@@ -62,14 +65,6 @@ public sealed class ImageStore(string folder)
         [0x42, 0x4D, ..] => "bmp",
         [0x00, 0x00, 0x01, 0x00, ..] => "ico",
         [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, ..] => "avif",   // ....ftypavif
-        _ when LooksLikeSvg(bytes) => "svg",
         _ => "bin",
     };
-
-    static bool LooksLikeSvg(ReadOnlySpan<byte> bytes)
-    {
-        var head = System.Text.Encoding.UTF8.GetString(bytes[..Math.Min(bytes.Length, 512)]).TrimStart('﻿', ' ', '\r', '\n', '\t');
-        return head.StartsWith("<svg", StringComparison.OrdinalIgnoreCase)
-            || (head.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) && head.Contains("<svg", StringComparison.OrdinalIgnoreCase));
-    }
 }

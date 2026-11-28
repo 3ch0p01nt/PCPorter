@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Lnk;
+using PCPorter.Collectors.Sources;
 
 namespace PCPorter.Forensics.Images;
 
@@ -16,6 +17,13 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
     internal const string JumpListTimeMeaning = "last opened (Jump List)";
     internal const string MissingNote = "file no longer exists";
     internal const string CloudOnlyNote = "file is stored only online (not downloaded)";
+
+    /// <summary>
+    /// Shortcuts and Jump Lists are read through <see cref="SourceFiles"/> (inside the scanned drive, no links) and
+    /// parsed from memory; a real one is a few KB to a few MB, so anything larger is refused.
+    /// </summary>
+    internal const long MaxListBytes = 16L << 20;
+    const int CodePage = 1252;
 
     static RecentImageOpensSource()
     {
@@ -61,7 +69,7 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
     {
         try
         {
-            var lnk = Lnk.Lnk.LoadFile(lnkPath);
+            var lnk = new LnkFile(SourceFiles.ReadAllBytes(lnkPath, MaxListBytes), lnkPath, CodePage);
             var info = new FileInfo(lnkPath);
             return MapShortcut(context, lnk, info.CreationTimeUtc, info.LastWriteTimeUtc, Path.GetFileNameWithoutExtension(lnkPath));
         }
@@ -162,7 +170,7 @@ public sealed class RecentImageOpensSource : IImageEvidenceSource
         string app;
         try
         {
-            var jump = JumpList.JumpList.LoadAutoJumplist(jumpPath);
+            var jump = new JumpList.Automatic.AutomaticDestination(SourceFiles.ReadAllBytes(jumpPath, MaxListBytes), jumpPath, CodePage);
             app = string.IsNullOrWhiteSpace(jump.AppId?.Description) ? "unknown app" : jump.AppId.Description;
             items = [];
             foreach (var entry in jump.DestListEntries ?? [])

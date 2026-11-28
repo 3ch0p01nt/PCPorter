@@ -421,12 +421,20 @@
   const tagSel = t => { (selected.size ? [...selected] : []).forEach(id => { if (t) tags[id] = t; else delete tags[id]; });
     store.set("pcporter-tags:" + data.meta.generatedUtc, tags); $("live").textContent = selected.size ? `${t ? "Tagged" : "Untagged"} ${selected.size} pictures` : "Select pictures first"; apply(); };
   $("tag-imp").onclick = () => tagSel("Important"); $("tag-rev").onclick = () => tagSel("Review"); $("tag-clear").onclick = () => tagSel(null);
+  /**
+   * Same as report-kit.js csvEscape (this page does not load the kit; a test keeps the two identical). A cell starting
+   * with = + - @, a tab or a carriage return, or with whitespace before one of = + - @, is defused with a leading '.
+   */
+  function csvEscape(v) {
+    let s = v == null ? "" : String(v);
+    if (/^(?:[=+\-@\t\r]|\s+[=+\-@])/.test(s)) s = "'" + s;
+    return /[",\n\r]/.test(s) || s.startsWith("'") ? `"${s.replace(/"/g, '""')}"` : s;
+  }
   $("csv").onclick = () => {
     const list = selected.size ? items.filter(i => selected.has(i.id)) : view;
     const cols = ["source", "evidence", "user", "originalPath", "url", "status", "cacheId", "freeSpace", "displayedAfterUtc", "displayedBeforeUtc", "confidence", "tag", "picture"];
-    const esc = v => { const s = v == null ? "" : String(v); return /[",\n\r]/.test(s) || /^[=+\-@\t]/.test(s) ? `"${(/^[=+\-@\t]/.test(s) ? "'" : "") + s.replace(/"/g, '""')}"` : s; };
     const lines = [cols.join(",")].concat(list.map(i => [i.source, evidenceText[i.evidence] || i.evidence, i.user, i.originalPath, i.url, i.status, i.cacheId, i.freeSpace ? "yes" : "",
-      i.dates && i.dates.after, i.dates && i.dates.before, i.dates && i.dates.confidence, tags[i.id], i.images.length ? IMG + i.images[0].f : ""].map(esc).join(",")));
+      i.dates && i.dates.after, i.dates && i.dates.before, i.dates && i.dates.confidence, tags[i.id], i.images.length ? IMG + i.images[0].f : ""].map(csvEscape).join(",")));
     const a = el("a", { href: URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" })), download: "pcporter-images.csv" });
     document.body.append(a); a.click(); a.remove();
     $("live").textContent = `Exported ${list.length} rows`;

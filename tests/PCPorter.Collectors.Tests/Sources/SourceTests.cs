@@ -260,6 +260,43 @@ public class OfflineSourceTests : IDisposable
         _ = HiveParser.Parse(file);
         Assert.Equal(before, File.ReadAllBytes(file));
     }
+
+    /// <summary>A hive whose two sequence numbers differ (not closed cleanly), so its transaction logs are replayed.</summary>
+    string DirtyHive()
+    {
+        MiniWindows();
+        var file = Path.Combine(_root, "Windows", "System32", "config", "SOFTWARE");
+        var bytes = File.ReadAllBytes(file);
+        BitConverter.GetBytes(BitConverter.ToUInt32(bytes, 4) + 1).CopyTo(bytes, 4);     // primary sequence number
+        uint sum = 0;                                                                      // header checksum (XOR of the first 127 dwords)
+        for (int i = 0; i < 508; i += 4) sum ^= BitConverter.ToUInt32(bytes, i);
+        BitConverter.GetBytes(sum).CopyTo(bytes, 508);
+        File.WriteAllBytes(file, bytes);
+        return file;
+    }
+
+    [Fact]
+    public void Transaction_logs_are_read_through_source_files()
+    {
+        var file = DirtyHive();
+        File.WriteAllBytes(file + ".LOG1", new byte[4096]);
+        var reads = new List<string>();
+        using (SourceFiles.Observe((kind, path) => { if (kind == "read") lock (reads) reads.Add(path); }))
+        using (SourceFiles.Confine(_root))
+            Assert.True(HiveParser.Parse(file).Dirty);
+        Assert.Contains(file + ".LOG1", reads);
+    }
+
+    [Fact]
+    public void An_oversized_transaction_log_is_not_replayed()
+    {
+        var file = DirtyHive();
+        using (var fs = new FileStream(file + ".LOG1", FileMode.CreateNew)) fs.SetLength(HiveParser.MaxLogBytes + 1);
+        var r = HiveParser.Parse(file);
+        Assert.True(r.Dirty);
+        Assert.False(r.Replayed);
+        Assert.NotNull(r.Root);
+    }
 }
 
 public class LiveSourceTests
