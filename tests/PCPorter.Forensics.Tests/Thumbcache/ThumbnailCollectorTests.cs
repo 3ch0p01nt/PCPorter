@@ -200,6 +200,25 @@ public class ThumbnailCollectorTests : IDisposable
     }
 
     [Fact]
+    public void A_junction_inside_the_users_own_profile_cannot_pull_in_another_accounts_thumbnails()
+    {
+        var alice = Explorer("alice", ("thumbcache_96.db", new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Png).Build()));
+        var bobWindows = Path.Combine(_root, "Users", "bob", "AppData", "Local", "Microsoft", "Windows");
+        Directory.CreateDirectory(Path.GetDirectoryName(bobWindows)!);
+        Junction(bobWindows, Path.GetDirectoryName(alice)!);                    // bob's ...\Windows -> alice's ...\Windows
+        try
+        {
+            var bobExplorer = Path.Combine(bobWindows, "Explorer");
+            Assert.True(File.Exists(Path.Combine(bobExplorer, "thumbcache_96.db")));
+            var result = Collect(new NoPathResolver(), new ThumbnailSource("bob", bobExplorer));
+            Assert.Empty(result.Items);
+            Assert.Contains(result.Warnings, w => w.Contains("bob") && w.Contains("link"));
+            Assert.Single(Collect(new NoPathResolver(), new ThumbnailSource("alice", alice)).Items);   // alice's own run still works
+        }
+        finally { Directory.Delete(bobWindows); }
+    }
+
+    [Fact]
     public void Chained_resolver_only_asks_later_resolvers_for_missing_ids()
     {
         var first = new MapResolver(new() { [1] = "a" });

@@ -75,7 +75,7 @@ public static class ThumbnailJob
             var locator = new OriginalLocator();
             foreach (var src in sources)
             {
-                var profile = Path.GetFullPath(Path.Combine(src.ExplorerFolder, "..", "..", "..", "..", ".."));
+                var profile = ThumbnailCollector.ProfileOf(src.ExplorerFolder);
                 var ctx = new ImageSourceContext(src.User, profile, warnings, notes);
                 foreach (var source in options.ExtraSources)
                 {

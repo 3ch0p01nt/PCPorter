@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using PCPorter.Collectors.Sources;
 using PCPorter.Forensics.Gallery;
 using PCPorter.Forensics.Images;
 
@@ -82,13 +83,19 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
         foreach (var source in sources)
         {
             ct.ThrowIfCancellationRequested();
-            if (IsReparsePoint(source.ExplorerFolder))
-            {
-                warnings.Add($"Skipped the thumbnail folder for {source.User}: it is a link to another location.");
-                continue;
-            }
+            // Everything is read inside this account's own profile: a junction or symlink anywhere on the way (even one
+            // the user made in their own AppData) could otherwise lead into another account's caches.
+            using var confined = SourceFiles.Confine(ProfileOf(source.ExplorerFolder));
             List<string> files;
-            try { files = Directory.EnumerateFiles(source.ExplorerFolder, "*.db").ToList(); }
+            try
+            {
+                if (Directory.Exists(source.ExplorerFolder) && !SourceFiles.IsInside(source.ExplorerFolder))
+                {
+                    warnings.Add($"Skipped the thumbnail folder for {source.User}: it is, or goes through, a link to another location.");
+                    continue;
+                }
+                files = Directory.EnumerateFiles(source.ExplorerFolder, "*.db", SourceFiles.Options).ToList();
+            }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
                 warnings.Add($"Could not open the thumbnail folder for {source.User}: {ex.Message}");
@@ -110,10 +117,13 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
 
                 try
                 {
-                    // Explorer keeps these open: share read/write/delete so we never block it.
-                    using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
-                        bufferSize: 1 << 20, FileOptions.RandomAccess);
-                    if (fs.Length == 0) continue;
+                    // Explorer keeps these open: SourceFiles shares read/write/delete so we never block it, and refuses
+                    // links and anything whose real location is outside the profile before opening.
+                    using var file = SourceFiles.OpenRead(path);
+                    if (PCPorter.Core.IO.FileIdentity.LinkCount(file.SafeFileHandle) is > 1)
+                        throw new UnauthorizedAccessException("it has more than one name (hard link), so it may belong to another account; it was not read.");
+                    if (file.Length == 0) continue;
+                    using var fs = new BufferedStream(file, 1 << 20);
                     var info = new FileInfo(path);
                     var parsed = ThumbcacheParser.Parse(fs, Path.GetFileName(path), ct);
                     warnings.AddRange(parsed.Warnings);
@@ -210,10 +220,18 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
         return new DateWindow(after, before, confidence, sources);
     }
 
-    static bool IsReparsePoint(string folder)
+    const string ExplorerSuffix = @"\AppData\Local\Microsoft\Windows\Explorer";
+
+    /// <summary>
+    /// The account's profile folder that holds this Explorer folder (string-based, so device paths into restore points
+    /// work), or the Explorer folder itself when it is not in the usual place.
+    /// </summary>
+    public static string ProfileOf(string explorerFolder)
     {
-        try { return Directory.Exists(folder) && new DirectoryInfo(folder).Attributes.HasFlag(FileAttributes.ReparsePoint); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+        var folder = explorerFolder.TrimEnd('\\', '/').Replace('/', '\\');
+        return folder.EndsWith(ExplorerSuffix, StringComparison.OrdinalIgnoreCase) && folder.Length > ExplorerSuffix.Length
+            ? folder[..^ExplorerSuffix.Length]
+            : folder;
     }
 
     /// <summary>
