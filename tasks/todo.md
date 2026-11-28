@@ -137,6 +137,38 @@ Design: [docs/plans/2026-11-26-pcporter-design.md](../docs/plans/2026-11-26-pcpo
 - [ ] Passwords.html (+ accounts inventory)
 - [ ] Security Audit, Readiness
 
+## Gap closure (docs/plans/2026-11-27-gap-closure.md) - 2026-11-27
+- [x] Six read-only flow reviews (shell, scan, history, gallery, shared safety, docs vs behaviour): ~70 findings, ~45
+  distinct after merging; one reviewer claim was wrong (repo "not in git").
+- [x] Group 1 shared safety: network/subst/SharePoint/Google Drive/cloud-placeholder save folders refused; ancestor
+  links checked before creating; empty/relative folder refused; save-on-scanned-drive check by volume identity;
+  SourceRejectedException; confinement on NT paths, fail closed, links refused before opening; elevated runs fail
+  closed (no user-writable fallback); shadow-copy journal with pending lines and owner process; Redactor /rp, -pX,
+  URL-encoded secrets. Extra bug: file identity read shifted fields (volume serial was the file size).
+- [x] Group 2 app/CLI: reports and folders open only from PCPorter case folders, un-elevated via full-path explorer;
+  close/log-off stops the job and cleans up; stale shadow copies removed at elevated start; backup/report stubs exit 2;
+  one error mapping (exit 3 only for refused input); thumbs Ctrl+C, JSON shape, all-users note; second Ctrl+C exits;
+  title/Home/hint texts; folder warnings shown; crash handler; Local mutex + bring window forward; suggestion off the UI
+  thread; console stderr. New tests/PCPorter.App.Tests.
+- [x] Group 3 scan: time-outs are TimedOut not "cancelled"; stopped/failed scans say "Incomplete check"; one ScanOutcome
+  (offline = exit 1 always); ScanJob refuses saving on the scanned drive; failed scans delete or name their folder;
+  existence checks never follow links.
+- [x] Group 4 history: torn copies re-copied (quick_check + WAL salts, 3 tries, "From a damaged copy"); "Recovered from
+  leftover data" wording, uncommitted WAL frames skipped; restore points find deleted profiles and only claim "no longer
+  listed" for profiles read live; work-folder warning; time zones named (viewer + scanned PC); report filter/CSV/URL-state
+  fixes; download paths masked; IE failures contained per profile; volume-based save check.
+- [x] Group 5 gallery: cancel/failure removes the case folder; cloud-only files never downloaded; FolderGone status and
+  no network probing; restore-point copies merged (thumbnail-only Summary); date window only tightened when consistent;
+  one image store; skipped accounts warned and listed; thumbcache read confined to the profile; Win10 shadow-copy cleanup
+  failures kept separate; image URLs and warnings masked; report keyboard/focus/empty/no-preview fixes.
+- [x] Group 6 docs/release: package.ps1 zips only the smoke-tested EXE (hash + time + file list); InformationalVersion
+  0.1.0+<commit date>.<hash>[.dirty]; regress checks can't pass vacuously; smoke checks save-on-scanned-drive refusal;
+  baseline UTF-8 + caseFolder; HOW-TO-RUN "If Windows blocks it" + CLI exit codes; checklist without impossible items.
+- [x] Merged into main with wiring (scan outcome in page/CLI, summary counts in gallery page/CLI, full version in all
+  reports). Fast and full levels ALL PASSED (1,163 tests). Carver speed test now measures processor time.
+- [ ] Release level after reinstalling the smoke task (UAC), then the zip through the new gate.
+- [ ] Manual checklist (GUI items need a person at the screen).
+
 ## Phase 4 - Workbench
 ## Phase 5 - Backup engine
 ## Phase 6 - Restore
