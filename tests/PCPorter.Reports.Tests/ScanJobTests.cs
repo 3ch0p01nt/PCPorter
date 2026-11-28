@@ -69,6 +69,29 @@ public class ScanJobTests : IDisposable
         Assert.False(Directory.Exists(inside));
     }
 
+    [Fact]
+    public void A_failure_before_anything_useful_is_saved_removes_the_case_folder()
+    {
+        var ex = Assert.Throws<ScanJobFailedException>(() => ScanJob.Run(_out, new ScanJobOptions(), _ => throw new IOException("no collectors")));
+        Assert.Null(ex.CaseFolderPath);
+        Assert.IsType<IOException>(ex.InnerException);
+        Assert.Equal("no collectors", ex.Message);
+        Assert.Empty(Directory.GetDirectories(Path.Combine(_out, "PCPorter")));          // the empty case folder is gone
+    }
+
+    [Fact]
+    public void A_failure_after_the_results_are_saved_keeps_the_case_folder_and_names_it()
+    {
+        var ex = Assert.Throws<ScanJobFailedException>(() => ScanJob.Run(_out, new ScanJobOptions(),
+            _ => [new Fake("Things", () => new CollectorOutput("things", [new Thing("t1", "x")], []))],
+            writeReport: (_, _) => throw new UnauthorizedAccessException("report blocked")));
+        Assert.NotNull(ex.CaseFolderPath);
+        Assert.True(File.Exists(Path.Combine(ex.CaseFolderPath!, "case.db")));
+        Assert.True(File.Exists(Path.Combine(ex.CaseFolderPath!, "scan", "things.json")));
+        Assert.False(Directory.Exists(Path.Combine(ex.CaseFolderPath!, "work")));
+        Assert.IsType<UnauthorizedAccessException>(ex.InnerException);
+    }
+
     static ScanJobResult Result(bool offline, params CollectorStatus[] statuses) =>
         new("case", "id", new ScanRunResult(statuses.Select((s, i) => new CollectorRun($"c{i}", s, 0, 0, null, null)).ToList()), [], [], null, "", null, offline);
 

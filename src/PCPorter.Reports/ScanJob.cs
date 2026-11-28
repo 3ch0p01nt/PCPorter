@@ -44,9 +44,23 @@ public sealed record ScanJobResult(string CaseFolder, string ScanId, ScanRunResu
 }
 
 /// <summary>
+/// The scan failed after its case folder was created. <see cref="Exception.InnerException"/> is the cause (its message
+/// is this message; redact before showing). <see cref="CaseFolderPath"/> is the kept case folder when results were
+/// already saved in it (case.db and the scan exports; the report may be missing), or null when nothing useful had been
+/// written and the folder was removed.
+/// </summary>
+public sealed class ScanJobFailedException(string? caseFolderPath, Exception inner) : Exception(inner.Message, inner)
+{
+    public string? CaseFolderPath { get; } = caseFolderPath;
+}
+
+/// <summary>
 /// Health &amp; security scan: opens the source first (a bad drive never leaves an empty case), then a private case
 /// folder named after the SCANNED PC, case.db (scan row written before collectors run), redacted items, JSON exports,
 /// an activity log for IT and HealthReport.html. All file access is confined to the scanned drive.
+/// Errors: <see cref="CaseLocationRejectedException"/> (bad save folder, including one on the scanned drive) and
+/// <see cref="PCPorter.Core.SourceRejectedException"/> (bad drive) before anything is written; any failure after the
+/// case folder exists is a <see cref="ScanJobFailedException"/> that names the kept folder, or none if it was removed.
 /// </summary>
 public static partial class ScanJob
 {
@@ -85,6 +99,7 @@ public static partial class ScanJob
         var folder = CaseFolder.Create(outRoot, started, computer ?? (source.IsLive ? Environment.MachineName : "OldPC"));
         var work = Path.Combine(folder.Path, "work");
         var scanDir = Path.Combine(folder.Path, "scan");
+        bool saved = false;                                           // case.db and the exports hold this scan's results
         try
         {
             CaseFolder.CreatePrivate(work);
@@ -123,6 +138,7 @@ public static partial class ScanJob
                     db.FinishScan(scanId, DateTimeOffset.UtcNow, StatusOf(OutcomeOf(run, !source.IsLive)));
                 });
             }
+            saved = true;
 
             var activityPath = Path.Combine(scanDir, "activity.json");
             File.WriteAllText(activityPath, JsonSerializer.Serialize(new
@@ -139,6 +155,18 @@ public static partial class ScanJob
                 if (File.Exists(report)) result = result with { ReportPath = report };
             }
             return result;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Nothing useful yet: remove the empty case so no unnamed folder is left behind. Otherwise keep the saved
+            // results and say where they are.
+            if (!saved && TryDelete(folder.Path)) throw new ScanJobFailedException(null, ex);
+            throw new ScanJobFailedException(folder.Path, ex);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!saved) TryDelete(folder.Path);
+            throw;
         }
         finally
         {
@@ -171,6 +199,13 @@ public static partial class ScanJob
                 return PCPorter.Core.Cli.ExitCodes.FindingsFound;
         }
         return outcome == ScanOutcome.Ok ? PCPorter.Core.Cli.ExitCodes.Ok : PCPorter.Core.Cli.ExitCodes.Partial;
+    }
+
+    /// <summary>Deletes a case folder this run created (never through a link: CaseFolder refused those). False if anything is left.</summary>
+    static bool TryDelete(string path)
+    {
+        try { if (Directory.Exists(path)) Directory.Delete(path, true); return true; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     static string UniqueKind(string kind, HashSet<string> used)
