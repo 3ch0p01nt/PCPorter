@@ -23,9 +23,7 @@ public partial class App : Application
         SetDllDirectory("");
         bool cli = e.Args.Length > 0;
 
-        // Attach to the caller's console only when output is NOT already redirected: attaching replaces a stdout
-        // that points at a file, so "pcporter scan --json > out.json" used to produce an empty file.
-        if (cli && GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) is not (FILE_TYPE_DISK or FILE_TYPE_PIPE)) AttachConsole(-1);
+        if (cli) ConsoleAttach.Apply();   // the caller's console, for each stream that is not redirected
 
         // Elevated, the log folder must be admin-only (AppFolders); when it cannot be made safe PCPorter stops here
         // with a clear message instead of crashing on its first log line.
@@ -108,22 +106,6 @@ public partial class App : Application
         Logging.Close();
         base.OnExit(e);
     }
-
-    [DllImport("kernel32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool AttachConsole(int processId);
-
-    const int STD_OUTPUT_HANDLE = -11;
-    const uint FILE_TYPE_DISK = 1, FILE_TYPE_PIPE = 3;
-
-    [DllImport("kernel32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    static extern IntPtr GetStdHandle(int stdHandle);
-
-    [DllImport("kernel32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    static extern uint GetFileType(IntPtr handle);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

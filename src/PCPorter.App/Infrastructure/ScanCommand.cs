@@ -14,8 +14,9 @@ namespace PCPorter.App.Infrastructure;
 /// <c>pcporter scan --out &lt;folder&gt; [--offline D:\] [--json] [--quiet] [--fail-on high|unusual] [--include-defender-prefs]</c>:
 /// health &amp; security scan of this PC or of a dead PC's drive.
 /// Exit codes: 0 ok, 1 partial, 2 failed, 3 bad arguments, 4 not elevated, 5 findings at the --fail-on level, 6 cancelled (Ctrl+C).
-/// The app is a Windows (GUI) program: it attaches to the calling console, so in cmd use <c>start /wait pcporter scan ...</c>
-/// (PowerShell waits by itself when you pipe it, e.g. <c>pcporter scan --out E:\ --json | Out-String</c>) to read the exit code.
+/// The app is a Windows (GUI) program that attaches to the calling console. Read the exit code from PowerShell, which
+/// waits for it when piped: <c>&amp; pcporter scan --out E:\ --json | Out-String; $LASTEXITCODE</c>. In cmd,
+/// <c>start /wait</c> always reports 0 for a GUI program, so do not rely on it.
 /// </summary>
 public static class ScanCommand
 {
