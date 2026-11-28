@@ -30,6 +30,23 @@ public class FileIdentityTests
     }
 
     [Fact]
+    public void Entry_falls_back_to_plain_attributes_on_drives_without_reparse_tags()
+    {
+        // exFAT and FAT32 (most USB backup drives) do not answer FileAttributeTagInfo: the folder must still be usable.
+        var folder = FileIdentity.EntryFromAttributesOnly((uint)FileAttributes.Directory);
+        Assert.False(folder.IsReparsePoint);
+        Assert.False(folder.IsLink);
+        Assert.False(folder.IsCloud);
+
+        // A reparse point whose tag cannot be read is treated as a link (fail closed), never as a normal folder.
+        var unknown = FileIdentity.EntryFromAttributesOnly((uint)(FileAttributes.Directory | FileAttributes.ReparsePoint));
+        Assert.True(unknown.IsLink);
+
+        // Cloud placeholder attributes still count without a tag.
+        Assert.True(FileIdentity.EntryFromAttributesOnly((uint)FileAttributes.Directory | 0x400000).IsCloud);
+    }
+
+    [Fact]
     public void Entry_describes_the_link_itself()
     {
         var root = Directory.CreateTempSubdirectory("pcporter-entry").FullName;

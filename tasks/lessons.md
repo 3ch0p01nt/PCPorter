@@ -77,3 +77,10 @@
   file with admin rights. Rule: copy only the database and `-wal`; never `-journal`; prefer `immutable=1`/read-only
   opens for untrusted databases. And a security test must fail before the fix: the first version passed because SQLite
   silently deleted the junk journal, so assert on what PCPorter reads (SourceFiles.Observe), not on what is left.
+
+## exFAT/FAT32 drives reject some file queries (2026-11-28)
+- `GetFileInformationByHandleEx(FileAttributeTagInfo)` fails on exFAT/FAT32 (most USB backup drives ship exFAT), so the
+  save-folder check refused every USB drive: "could not check where this folder really is". Found by the owner on a real PC.
+- Rule: every Win32 file query on the SAVE side needs a fallback that works on exFAT/FAT32 (here: plain attributes from
+  `GetFileInformationByHandle`, an unknown reparse point still fails closed). "Not verifiable here" items in a plan are
+  real risks: ask the owner to try them on real hardware before calling the release done.

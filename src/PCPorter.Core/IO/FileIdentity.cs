@@ -49,9 +49,21 @@ public static class FileIdentity
     public static EntryInfo? Entry(string path)
     {
         using var h = OpenForQuery(path, followLinks: false);
-        if (h is null || !GetFileInformationByHandleEx(h, 9 /* FileAttributeTagInfo */, out var info, 8)) return null;
-        return new EntryInfo((FileAttributes)info.FileAttributes, info.ReparseTag);
+        if (h is null) return null;
+        if (GetFileInformationByHandleEx(h, 9 /* FileAttributeTagInfo */, out var info, 8))
+            return new EntryInfo((FileAttributes)info.FileAttributes, info.ReparseTag);
+        // exFAT and FAT32 (most USB backup drives) do not support FileAttributeTagInfo: use the plain attributes.
+        return GetFileInformationByHandle(h, out var basic) ? EntryFromAttributesOnly(basic.FileAttributes) : null;
     }
+
+    /// <summary>
+    /// An entry known only by its attributes. Such drives have no reparse points, but if one is reported anyway its tag
+    /// is unknown, so it is treated as a link (refused) rather than a normal folder.
+    /// </summary>
+    internal static EntryInfo EntryFromAttributesOnly(uint attributes) =>
+        new((FileAttributes)attributes, ((FileAttributes)attributes).HasFlag(FileAttributes.ReparsePoint) ? UnknownReparseTag : 0);
+
+    const uint UnknownReparseTag = 0xFFFFFFFF;   // has the name-surrogate bit: counts as a link
 
     /// <summary>(volume serial, file index): the same file always has the same pair, whatever path or letter reaches it.</summary>
     public static (uint Volume, ulong File)? Identity(string path)
