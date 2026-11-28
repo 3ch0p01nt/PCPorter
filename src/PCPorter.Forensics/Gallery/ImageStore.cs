@@ -4,7 +4,7 @@ using PCPorter.Forensics.Thumbcache;
 namespace PCPorter.Forensics.Gallery;
 
 /// <summary>
-/// Writes each distinct image once into the report's image folder, named by its content hash.
+/// Writes each distinct image once into the report's image folder (in a subfolder by hash prefix), named by its content hash.
 /// Uses CreateNew so a pre-planted file is never overwritten; an existing file under the same name is accepted only
 /// when its bytes are identical (then the picture is already stored). One store is shared by every source of a run.
 /// </summary>
@@ -19,10 +19,12 @@ public sealed class ImageStore(string folder)
 
     public string Save(ReadOnlySpan<byte> image, string extension)
     {
-        var name = $"{XxHash64.HashToUInt64(image):x16}.{extension}";
+        // In one of 256 subfolders by hash prefix: a FAT32 folder holds only about 21,800 such names.
+        var hash = $"{XxHash64.HashToUInt64(image):x16}";
+        var name = $"{hash[..2]}/{hash}.{extension}";
         if (_written.Contains(name)) return name;
-        Directory.CreateDirectory(Folder);
-        var path = Path.Combine(Folder, name);
+        var path = Path.Combine(Folder, hash[..2], $"{hash}.{extension}");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         try
         {
             using var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);

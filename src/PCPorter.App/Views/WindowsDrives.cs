@@ -118,15 +118,20 @@ public static class WindowsDrives
     /// <summary>The root of the drive Windows runs from, for example C:\.</summary>
     public static string SystemRoot => Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? @"C:\";
 
+    /// <summary>Below this a drive cannot hold even a health check's results (a gallery needs far more).</summary>
+    const long MinUsefulFreeBytes = 200L * 1024 * 1024;
+
     /// <summary>
     /// The drives worth saving to, best first: never the drive Windows runs from (it is about to be reset) nor a drive
     /// that holds another Windows (the old PC's drive, the one being checked). USB disks first (backup hard drives and
     /// SSDs say "Fixed", like the PC's own disk, so the bus is what tells them apart), then other removable drives (SD
-    /// cards), then the rest; the most free space first within each, so a backup disk comes before a small stick.
+    /// cards), then the rest; the most free space first within each, so a backup disk comes before a small stick. A full
+    /// drive comes last.
     /// </summary>
     public static List<SaveDrive> RankSaveDrives(IEnumerable<SaveDrive> drives, string systemRoot) =>
         drives.Where(d => !string.Equals(d.Root, systemRoot, StringComparison.OrdinalIgnoreCase) && !d.HoldsWindows)
-              .OrderByDescending(d => d.Usb ? 2 : d.Removable ? 1 : 0).ThenByDescending(d => d.FreeBytes)
+              .OrderBy(d => d.FreeBytes < MinUsefulFreeBytes)          // a full drive is still listed, never suggested first
+              .ThenByDescending(d => d.Usb ? 2 : d.Removable ? 1 : 0).ThenByDescending(d => d.FreeBytes)
               .ToList();
 
     /// <summary>

@@ -15,7 +15,20 @@ public class ImageStoreTests : IDisposable
         var first = new ImageStore(_dir).Save(Png, "png");
         var second = new ImageStore(_dir).Save(Png, "png");            // e.g. a second store on the same folder
         Assert.Equal(first, second);
-        Assert.Single(Directory.GetFiles(_dir));
+        Assert.Single(Directory.GetFiles(_dir, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void Pictures_are_spread_over_subfolders_so_fat32_folders_never_fill()
+    {
+        // FAT32 holds about 21,800 such names in one folder: 256 subfolders by hash prefix keep each one small.
+        var store = new ImageStore(_dir);
+        var names = Enumerable.Range(0, 64).Select(i => store.Save(Png.Append((byte)i).ToArray(), "png")).ToList();
+        Assert.All(names, n => Assert.Matches("^[0-9a-f]{2}/[0-9a-f]{16}\\.png$", n));
+        Assert.All(names, n => Assert.StartsWith(n[..2], n[3..]));
+        Assert.All(names, n => Assert.True(File.Exists(Path.Combine(_dir, n))));
+        Assert.True(names.Select(n => n[..2]).Distinct().Count() > 1);
+        Assert.Empty(Directory.GetFiles(_dir));                       // nothing directly in the picture folder
     }
 
     [Fact]

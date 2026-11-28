@@ -53,7 +53,7 @@ public class ThumbnailCollectorTests : IDisposable
             ("thumbcache_96.db", new ThumbcacheBuilder().Entry(1, ThumbcacheBuilder.Png).Entry(2, ThumbcacheBuilder.Png).Build()));
         var result = Collect(new NoPathResolver(), new ThumbnailSource("bob", dir));
         Assert.Equal(2, result.Items.Count);
-        Assert.Single(Directory.GetFiles(Path.Combine(_root, "out")));
+        Assert.Single(Directory.GetFiles(Path.Combine(_root, "out"), "*", SearchOption.AllDirectories));
         Assert.Equal(result.Items[0].Best!.File, result.Items[1].Best!.File);
     }
 

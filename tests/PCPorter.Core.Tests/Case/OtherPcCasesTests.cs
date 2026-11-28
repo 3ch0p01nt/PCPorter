@@ -130,6 +130,15 @@ public class OtherPcCasesTests : IDisposable
     }
 
     [Fact]
+    public void Results_on_a_drive_without_permissions_are_readable_by_anyone()
+    {
+        // exFAT/FAT32 keep no permissions: there is nothing to grant, so never ask to "let this account read them".
+        var c = MakeCase();
+        Assert.False(OtherPcCases.CanRead(c, TestSid));
+        Assert.True(OtherPcCases.CanRead(c, TestSid, _ => new VolumeFormat("exFAT", false)));
+    }
+
+    [Fact]
     public void Grant_for_the_current_user_lets_them_read_the_report()
     {
         var c = MakeCase();

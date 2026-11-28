@@ -268,8 +268,10 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
             }
             $hv = Invoke-Pcp -Name "save-$fsName-history" -Arguments 'history', '--offline', $Fixture, '--out', $d.Root, '--json'
             $hj = Read-Json $hv.Out
-            Add-Check "Web history saves to $fsName drive root (exit 0 or 1, History.html written)" ($hv.Code -in 0, 1 -and $hj.summary.report -and
-                (Test-Path -LiteralPath $hj.summary.report) -and $hj.summary.report.StartsWith($d.Root)) "exit $($hv.Code)$(if ($hj.error) { ': ' + $hj.error } elseif (-not $hj) { ': ' + $hv.Out.Trim() })" $hv.Seconds
+            # The no-permissions note is a folder warning, never counted as a part of the history that could not be read.
+            $hWarned = @($hj.folderWarnings | Where-Object { $_ -match 'Anyone with the drive' }).Count -gt 0
+            Add-Check "Web history saves to $fsName drive root (exit 0 or 1, History.html written$(if ($noAcl) { ', no-permissions note' }))" ($hv.Code -in 0, 1 -and $hj.summary.report -and
+                (Test-Path -LiteralPath $hj.summary.report) -and $hj.summary.report.StartsWith($d.Root) -and ($hWarned -eq $noAcl)) "exit $($hv.Code)$(if ($hj.error) { ': ' + $hj.error } elseif (-not $hj) { ': ' + $hv.Out.Trim() })" $hv.Seconds
             if ($hj.summary.caseFolder -and -not $noAcl) { $cases += $hj.summary.caseFolder }
         }
 

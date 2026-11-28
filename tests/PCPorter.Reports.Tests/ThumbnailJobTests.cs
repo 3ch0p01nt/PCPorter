@@ -65,7 +65,7 @@ public class ThumbnailJobTests : IDisposable
     {
         var seen = new List<string>();
         var options = new ThumbnailJobOptions(ExtraSources: [new PictureSource()], ResolverFactory: SeeWork(seen),
-            DuplicateGrouper: (_, folder, _) => { Assert.NotEmpty(Directory.GetFiles(folder)); throw new InvalidOperationException("boom"); });
+            DuplicateGrouper: (_, folder, _) => { Assert.NotEmpty(Directory.GetFiles(folder, "*", SearchOption.AllDirectories)); throw new InvalidOperationException("boom"); });
         Assert.Throws<InvalidOperationException>(() => ThumbnailJob.Run(Out, null, [Live()], options: options));
         Assert.Empty(CaseFolders());
         Assert.False(Directory.Exists(Assert.Single(seen)));
@@ -77,7 +77,7 @@ public class ThumbnailJobTests : IDisposable
         var seen = new List<string>();
         var r = ThumbnailJob.Run(Out, null, [Live()], options: new ThumbnailJobOptions(ExtraSources: [new PictureSource()], ResolverFactory: SeeWork(seen)));
         Assert.True(File.Exists(r.ReportPath));
-        Assert.Equal(3, Directory.GetFiles(Path.Combine(r.CaseFolder, "Thumbnails", "thumbs")).Length);
+        Assert.Equal(3, Directory.GetFiles(Path.Combine(r.CaseFolder, "Thumbnails", "thumbs"), "*", SearchOption.AllDirectories).Length);
         Assert.False(Directory.Exists(Path.Combine(r.CaseFolder, "work")));
         // The search-index copy lives on the system drive in PCPorter's own folder (not on the save drive), and is gone.
         var work = Assert.Single(seen);

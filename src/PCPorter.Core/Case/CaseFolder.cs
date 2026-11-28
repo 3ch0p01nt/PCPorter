@@ -102,7 +102,10 @@ public static class CaseFolder
     {
         try
         {
-            var name = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(path))!).DriveFormat;
+            // DriveInfo does not take the \\?\E:\ form (CLI --out \\?\E:\x): use the plain drive root.
+            var full = Path.GetFullPath(path);
+            if (full.StartsWith(@"\\?\", StringComparison.Ordinal) || full.StartsWith(@"\\.\", StringComparison.Ordinal)) full = full[4..];
+            var name = new DriveInfo(Path.GetPathRoot(full)!).DriveFormat;
             return new VolumeFormat(name, name.Equals("NTFS", StringComparison.OrdinalIgnoreCase) || name.Equals("ReFS", StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException) { return null; }

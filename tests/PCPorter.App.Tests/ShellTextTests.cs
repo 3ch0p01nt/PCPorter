@@ -108,6 +108,14 @@ public class ShellTextTests
         Assert.Equal([@"F:\", @"E:\", @"D:\"], ranked.Select(d => d.Root));
     }
 
+    [Fact]
+    public void A_full_drive_is_listed_last_and_never_suggested_first()
+    {
+        var full = new SaveDrive(@"F:\", "Backup", 20L * 1024 * 1024, Usb: true, Removable: false, HoldsWindows: false);   // 20 MB free
+        var ranked = WindowsDrives.RankSaveDrives([full, Drive(@"D:\", 900)], @"C:\");
+        Assert.Equal([@"D:\", @"F:\"], ranked.Select(d => d.Root));
+    }
+
     [Theory]
     [InlineData(@"C:\PCPorterCases", true)]
     [InlineData(@"c:\", true)]

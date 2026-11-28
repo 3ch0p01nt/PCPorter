@@ -149,8 +149,12 @@ public static partial class OtherPcCases
     /// or one given read before). Group rules do not count: Administrators only helps an elevated program, not the
     /// browser or File Explorer.
     /// </summary>
-    public static bool CanRead(string casePath, SecurityIdentifier sid)
+    public static bool CanRead(string casePath, SecurityIdentifier sid) => CanRead(casePath, sid, CaseFolder.FormatOf);
+
+    /// <remarks>On a drive that keeps no permissions (exFAT, FAT32) everyone can read it: there is nothing to grant.</remarks>
+    internal static bool CanRead(string casePath, SecurityIdentifier sid, Func<string, VolumeFormat?> formatOf)
     {
+        if (Directory.Exists(casePath) && formatOf(casePath) is { KeepsPermissions: false }) return true;
         try
         {
             var rules = new DirectoryInfo(casePath).GetAccessControl(AccessControlSections.Access)

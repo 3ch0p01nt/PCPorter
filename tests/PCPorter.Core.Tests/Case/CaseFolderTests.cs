@@ -79,6 +79,15 @@ public class CaseFolderTests : IDisposable
     }
 
     [Fact]
+    public void Format_is_read_for_long_path_forms_too()
+    {
+        // --out \\?\E:\x must not read as "unknown", which would try to set permissions on an exFAT drive.
+        var f = CaseFolder.FormatOf(@"\\?\" + _root);
+        Assert.NotNull(f);
+        Assert.Equal(CaseFolder.FormatOf(_root)!.Name, f.Name);
+    }
+
+    [Fact]
     public void The_work_folder_is_per_case_in_pcporters_own_folder_not_in_the_case()
     {
         var a = CaseFolder.Create(_root, Now, "BOB-PC", NoEnv);

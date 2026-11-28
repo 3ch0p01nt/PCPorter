@@ -130,10 +130,6 @@ public static class HistoryJob
                 }
             }
 
-            // Warnings about the case folder (e.g. a drive that cannot keep it private) are shown with the rest, so the
-            // report, the page and the CLI count the same warnings.
-            warnings.InsertRange(0, folder.Warnings);
-
             // The copies are no longer needed: remove them before writing anything else, and say so if that fails.
             if (!DeleteWork(work))
                 warnings.Add($"The temporary work folder {work} could not be deleted; it holds private copies of browser files. " +
@@ -148,8 +144,10 @@ public static class HistoryJob
             var version = typeof(HistoryJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
             var computer = source.IsLive ? Environment.MachineName : $"Drive {source.ReadRoot}";
             var meta = new ReportMeta(computer, when, version, users.Select(u => u.UserName).ToList(), options.AllUsers || !source.IsLive);
-            var report = HistoryReport.WriteFile(scan, meta, folder.Path);
-            return new HistoryJobResult(report, folder.Path, scan, []);
+            // The report lists the case-folder warnings (e.g. a drive that cannot keep it private) with the rest; the
+            // result keeps them apart, so the page and the CLI show them as notes and never count them as unread parts.
+            var report = HistoryReport.WriteFile(scan with { Warnings = [.. folder.Warnings, .. warnings] }, meta, folder.Path);
+            return new HistoryJobResult(report, folder.Path, scan, folder.Warnings);
         }
         finally
         {

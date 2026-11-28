@@ -44,6 +44,11 @@ public static class JobErrors
         _ => JobErrorKind.Failed,
     };
 
+    /// <summary>A full drive: Windows' disk-full errors, or the case database's SQLITE_FULL (13), which is not an IOException.</summary>
+    static bool IsDiskFull(Exception e) =>
+        e is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 13 }
+        || (e is IOException && (e.HResult & 0xFFFF) is 0x70 /* ERROR_DISK_FULL */ or 0x27 /* ERROR_HANDLE_DISK_FULL */);
+
     /// <param name="what">The job's result in a few words, for example "the report" or "the results".</param>
     /// <param name="logFolder">Where the details are logged.</param>
     public static JobError Describe(Exception ex, string what, string logFolder)
@@ -59,6 +64,8 @@ public static class JobErrors
             JobErrorKind.CantStart => new(kind, "Can't start", message),
             _ => cause switch
             {
+                _ when IsDiskFull(cause) => new(kind, $"Couldn't save {what}", "There is not enough free space on the drive. " +
+                    "Free up some space or pick another drive, then try again." + (kept is null ? "" : $" What was saved before the problem is in {kept}.")),
                 UnsafeAppFolderException => new(kind, "PCPorter's working folder is not safe", message),
                 IOException or UnauthorizedAccessException => new(kind, $"Couldn't save {what}", message),
                 _ => new(kind, "Something went wrong", $"{message} Details are in the log folder: {logFolder}"),
