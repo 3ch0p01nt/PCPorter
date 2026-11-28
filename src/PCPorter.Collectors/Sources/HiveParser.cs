@@ -14,6 +14,8 @@ public static class HiveParser
 {
     static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase) { "SOFTWARE", "SYSTEM", "NTUSER.DAT", "UsrClass.dat" };
     public const long MaxHiveBytes = 1L << 30;
+    /// <summary>A transaction log larger than this is not replayed (real ones are a few MB to a few tens of MB).</summary>
+    public const long MaxLogBytes = 128L << 20;
 
     public static ParsedHive Parse(string hivePath)
     {
@@ -43,8 +45,12 @@ public static class HiveParser
             bool replayed = false;
             if (dirty)
             {
-                // Never through a link: a planted .LOG1 symlink could point at a network share.
-                var logs = new[] { hivePath + ".LOG1", hivePath + ".LOG2" }.Where(SourcePresence.IsFile).ToList();
+                // Read through SourceFiles (never through a link: a planted .LOG1 symlink could point at a network share)
+                // and capped; a log that is too large or unreadable is left out.
+                var logs = new List<TransactionLogFileInfo>();
+                foreach (var log in new[] { hivePath + ".LOG1", hivePath + ".LOG2" }.Where(SourcePresence.IsFile))
+                    try { logs.Add(new TransactionLogFileInfo(log, SourceFiles.ReadAllBytes(log, MaxLogBytes))); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
                 if (logs.Count > 0)
                 {
                     // updateExistingData: true applies the recovered bytes IN MEMORY (verified in the package source:

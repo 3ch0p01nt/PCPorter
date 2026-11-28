@@ -145,6 +145,36 @@ public class RecentImageOpensSourceTests(ITestOutputHelper output)
         Assert.Equal(@"C:\Users\bob\a.jpg", RecentImageOpensSource.MapToSource(@"C:\Users\bob\a.jpg", @"C:\Users\bob"));
     }
 
+    // Shortcuts and Jump Lists come from the old drive: they must be read through SourceFiles (inside the drive, no
+    // links, size cap), never opened by the parsing libraries themselves.
+    [Fact]
+    public void Shortcuts_and_jump_lists_are_read_through_source_files()
+    {
+        using var profile = new TempProfile();
+        var t = DateTime.UtcNow;
+        var lnk = profile.Write(@"AppData\Roaming\Microsoft\Windows\Recent\a.png.lnk", ImageTestData.Lnk(Path.Combine(profile.Folder, "a.png"), t, t, t));
+        var jump = profile.Write(@"AppData\Roaming\Microsoft\Windows\Recent\AutomaticDestinations\1b4dd67f29cb1962.automaticDestinations-ms", [1, 2, 3]);
+        var reads = new List<string>();
+        using (PCPorter.Collectors.Sources.SourceFiles.Observe((kind, path) => { if (kind == "read") lock (reads) reads.Add(path); }))
+            _ = new RecentImageOpensSource().Collect(new ImageSourceContext("bob", profile.Folder, new List<string>())).ToList();
+        Assert.Contains(lnk, reads);
+        Assert.Contains(jump, reads);
+    }
+
+    [Fact]
+    public void An_oversized_shortcut_is_not_parsed()
+    {
+        using var profile = new TempProfile();
+        var t = DateTime.UtcNow;
+        var lnk = ImageTestData.Lnk(Path.Combine(profile.Folder, "a.png"), t, t, t);
+        var big = new byte[RecentImageOpensSource.MaxListBytes + 1];
+        lnk.CopyTo(big, 0);
+        profile.Write(@"AppData\Roaming\Microsoft\Windows\Recent\a.png.lnk", big);
+        var ctx = new ImageSourceContext("bob", profile.Folder, new List<string>());
+        Assert.Empty(new RecentImageOpensSource().Collect(ctx));
+        Assert.Contains(ctx.Warnings, w => w.Contains("a.png.lnk"));
+    }
+
     [LocalRecentFact]
     [Trait("Category", "Live")]
     public void This_pcs_recent_files_and_jump_lists_parse_without_exceptions()

@@ -36,15 +36,46 @@ public static class Logging
 
     public static void Close() => Log.CloseAndFlush();
 
-    sealed class RedactingFormatter : ITextFormatter
+    /// <summary>
+    /// One log entry: the redacted message on ONE line (line breaks and other control characters in it are written as
+    /// escapes such as \n, so text from the old PC cannot forge extra log lines), then the redacted exception, if any,
+    /// with its own line breaks kept and any other control characters escaped.
+    /// </summary>
+    public sealed class RedactingFormatter : ITextFormatter
     {
-        readonly MessageTemplateTextFormatter _inner = new("{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
+        readonly MessageTemplateTextFormatter _line = new("{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}");
+        readonly MessageTemplateTextFormatter _exception = new("{Exception}");
 
         public void Format(LogEvent logEvent, TextWriter output)
         {
-            using var sw = new StringWriter();
-            _inner.Format(logEvent, sw);
-            output.Write(Redactor.Redact(sw.ToString()));
+            output.Write(Escape(Render(_line, logEvent), keepLineBreaks: false));
+            output.Write(Environment.NewLine);
+            if (logEvent.Exception is not null) output.Write(Escape(Render(_exception, logEvent), keepLineBreaks: true));
         }
+
+        static string Render(MessageTemplateTextFormatter formatter, LogEvent logEvent)
+        {
+            using var sw = new StringWriter();
+            formatter.Format(logEvent, sw);
+            return Redactor.Redact(sw.ToString());
+        }
+
+        static string Escape(string text, bool keepLineBreaks)
+        {
+            if (!text.Any(NeedsEscape)) return text;
+            var sb = new System.Text.StringBuilder(text.Length + 16);
+            foreach (var c in text)
+            {
+                if (!NeedsEscape(c) || (keepLineBreaks && c is '\r' or '\n')) sb.Append(c);
+                else if (c == '\r') sb.Append("\\r");
+                else if (c == '\n') sb.Append("\\n");
+                else if (c == '\t') sb.Append("\\t");
+                else sb.Append("\\u").Append(((int)c).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Control characters (C0, DEL, C1 incl. NEL) and the Unicode line and paragraph separators.</summary>
+        static bool NeedsEscape(char c) => char.IsControl(c) || c == (char)0x2028 || c == (char)0x2029;
     }
 }

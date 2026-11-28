@@ -26,4 +26,25 @@ public class ImageStoreTests : IDisposable
         Assert.Throws<IOException>(() => new ImageStore(_dir).Save(Png, "png"));
         Assert.Equal([1, 2, 3], File.ReadAllBytes(Path.Combine(_dir, name)));
     }
+
+    // An SVG is a document that can run script when opened from the report folder; the old PC's bytes are never saved as one.
+    [Theory]
+    [InlineData("<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>")]
+    [InlineData("<?xml version=\"1.0\"?>\n<svg onload=\"alert(1)\"/>")]
+    [InlineData("﻿  <SVG/>")]
+    public void Svg_is_saved_as_bin(string svg)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(svg);
+        Assert.Equal("bin", ImageStore.ExtensionFor(bytes));
+        var name = new ImageStore(_dir).Save(bytes, ImageStore.ExtensionFor(bytes));
+        Assert.EndsWith(".bin", name);
+        Assert.Empty(Directory.GetFiles(_dir, "*.svg"));
+    }
+
+    [Fact]
+    public void Real_picture_formats_keep_their_extension()
+    {
+        Assert.Equal("png", ImageStore.ExtensionFor(Png));
+        Assert.Equal("jpg", ImageStore.ExtensionFor([0xFF, 0xD8, 0xFF, 0xE0]));
+    }
 }

@@ -107,7 +107,7 @@ public class ChromiumExtrasTests
             WebDataFixture.Create(dir, ("email", "bob@example.com", 1, 0, 0));
             using var conn = new SqliteConnection($"Data Source={Path.Combine(dir, "Web Data")};Pooling=False");
             conn.Open();
-            SqliteReadGuard.AllowOnly(conn, "autofill");
+            PCPorter.Core.Security.UntrustedSqlite.AllowOnly(conn, "autofill");
 
             using var ok = conn.CreateCommand();
             ok.CommandText = ChromiumWebData.AutofillSql;

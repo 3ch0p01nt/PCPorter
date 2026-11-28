@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using PCPorter.Collectors.Sources;
+using PCPorter.Core.Security;
 
 namespace PCPorter.Collectors.Apps;
 
@@ -41,9 +42,13 @@ public sealed class WingetIndex : IDisposable
         Source = source;
         Tracking = tracking;
         var uri = new Uri(path).AbsoluteUri + "?mode=ro&immutable=1";
-        using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = uri, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
-        db.Open();
-        var tables = Rows(db, "SELECT 0, name FROM sqlite_master WHERE type = 'table'").Select(r => r.Text).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // The catalog may come from an old PC's drive: hardened, every table it has must be a plain table (a view or a
+        // virtual table refuses the whole catalog), and only winget's own tables can be read.
+        using var db = UntrustedSqlite.Open(new SqliteConnectionStringBuilder { DataSource = uri, Mode = SqliteOpenMode.ReadOnly }, UntrustedSqlite.BudgetFor(path));
+        var tables = Rows(db, "SELECT 0, name FROM sqlite_master WHERE type IN ('table', 'view')").Select(r => r.Text)
+            .Where(KnownTables.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (UntrustedSqlite.NotPlainTable(db, [.. tables]) is { } why) throw new InvalidDataException($"The winget catalog was not read: {why}.");
+        UntrustedSqlite.AllowOnly(db, [.. tables]);
         var meta = tables.Contains("metadata")
             ? Rows(db, "SELECT 0, name || '=' || value FROM metadata").Select(r => r.Text.Split('=', 2)).Where(p => p.Length == 2).ToDictionary(p => p[0], p => p[1])
             : [];
@@ -54,11 +59,19 @@ public sealed class WingetIndex : IDisposable
         else throw new InvalidDataException($"Unknown winget catalog layout (schema {SchemaVersion}).");
     }
 
+    /// <summary>The only tables a catalog is read from (the read guard refuses every other one).</summary>
+    static readonly HashSet<string> KnownTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "metadata", "packages", "productcodes2", "upgradecodes2", "pfns2", "norm_names2", "norm_publishers2", "manifest", "ids", "versions",
+        "productcodes", "productcodes_map", "upgradecodes", "upgradecodes_map", "pfns", "pfns_map", "norm_names", "norm_names_map",
+        "norm_publishers", "norm_publishers_map",
+    };
+
     /// <summary>Schema 2.x (published index): one row per package, value tables keyed by package.</summary>
     void LoadV2(SqliteConnection db, HashSet<string> tables)
     {
         foreach (var (id, text) in Rows(db, "SELECT rowid, id FROM packages")) _ids[id] = text;
-        bool hasRange = Rows(db, "SELECT 0, name FROM pragma_table_info('packages')").Any(r => r.Text == "arp_min_version");
+        bool hasRange = Rows(db, "PRAGMA table_info(packages)").Any(r => r.Text == "arp_min_version");    // (cid, name, ...)
         if (hasRange)
             foreach (var (pkg, range) in Rows(db, "SELECT rowid, IFNULL(arp_min_version, '') || '|' || IFNULL(arp_max_version, '') FROM packages")) AddRange(pkg, range);
         foreach (var (pkg, v) in Rows(db, "SELECT package, productcode FROM productcodes2")) Add(_codes, Code(v), pkg);
