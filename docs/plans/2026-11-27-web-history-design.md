@@ -43,7 +43,11 @@ New folder `src/PCPorter.Forensics/BrowserHistory/`:
 - `SqliteCarver` (layer 2): walks the raw bytes of the copied DB (freelist trunk/leaf pages, freeblocks and unallocated
   space in table leaf pages) and the WAL frames that are older than the live page versions. Decodes candidate records by
   varint header against the known column layouts (`urls`, `visits`, `moz_places`, `moz_historyvisits`, `downloads`).
-  Keeps only rows that parse cleanly and whose id is not in the live table. Labelled "recovered (deleted)".
+  Keeps only rows that parse cleanly and whose id is not in the live table. Labelled "Recovered from leftover data"
+  (may be deleted or an older copy of a page). Frames after the last commit are skipped (unsaved changes).
+  Other labels since the gap-closure review: "From a damaged copy" (a copy that still failed `quick_check` after 3
+  tries) and "Restore point copy" (a restore-point visit for a profile whose live history could not be read, so it
+  cannot be called "no longer listed").
 - `RestorePointHistory` (layer 3): `VssSnapshotProvider.ListExisting` (read-only, never creates), maps each profile's
   DB into each restore point, reads it with the same readers, keeps visits absent from the live DB, labelled
   "recovered (restore point <date>)". Live + admin only; otherwise a note.

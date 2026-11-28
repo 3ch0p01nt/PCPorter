@@ -143,7 +143,7 @@ public static class HistoryJob
             using (var db = CaseDb.Open(Path.Combine(folder.Path, "case.db")))
                 db.Insert(Rows(scan));
 
-            var version = typeof(HistoryJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "dev";
+            var version = typeof(HistoryJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
             var computer = source.IsLive ? Environment.MachineName : $"Drive {source.ReadRoot}";
             var meta = new ReportMeta(computer, when, version, users.Select(u => u.UserName).ToList(), options.AllUsers || !source.IsLive);
             var report = HistoryReport.WriteFile(scan, meta, folder.Path);
