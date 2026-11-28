@@ -84,3 +84,9 @@
 - Rule: every Win32 file query on the SAVE side needs a fallback that works on exFAT/FAT32 (here: plain attributes from
   `GetFileInformationByHandle`, an unknown reparse point still fails closed). "Not verifiable here" items in a plan are
   real risks: ask the owner to try them on real hardware before calling the release done.
+
+## Test harness gotchas (2026-11-28)
+- Taking a disk offline/online (to make it read-only) drops its drive letter: re-assign it before using the path.
+- Headless Edge can write its output and never exit: every external GUI process in a test needs a timeout and a kill.
+- Never name a PowerShell parameter `$Profile` (automatic variable); never edit CRLF scripts with Git Bash `sed -i`
+  without checking the line endings afterwards.

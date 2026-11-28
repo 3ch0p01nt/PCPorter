@@ -185,3 +185,11 @@ AlphaVSS fork namespace is `ArxOne.Win32.Vss`; WPF projects need explicit `using
 instead of `LibraryImport` (avoids unsafe code). Open risk: AlphaVSS loads its native DLL "from the same folder as
 AlphaVSS.Common", which may fail inside the single-file EXE - verify when the first VSS feature runs from the
 published EXE. Possible later tweak: drop ReadyToRun to shrink the EXE.
+
+## USB save-drive fixes and regression tests (2026-11-28)
+- [x] exFAT/FAT32 drives refused ("could not check where this folder really is") - owner's video; FileIdentity.Entry fallback
+- [x] Audit for the same class of problem (15 findings); fixed the 6 a home user hits (see improvement plan, "Save-drive audit")
+- [x] smoke.ps1: real NTFS/exFAT/FAT32/full/read-only virtual drives; gallery to the exFAT root; Edge check of the copy
+- [x] regress.ps1: 2-minute limit per headless Edge run (one hung for 85 minutes)
+- [x] Release level ALL PASSED (1,300 tests + smoke, 746 s); zip through the gate; v0.1.0 release replaced (d3a4ee5)
+- [ ] Owner: try the new zip on the real One Touch exFAT drive
