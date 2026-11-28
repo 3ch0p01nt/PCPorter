@@ -1,6 +1,7 @@
 using System.Globalization;
 using PCPorter.Collectors.Sources;
 using PCPorter.Core.Case;
+using PCPorter.Core.Security;
 
 namespace PCPorter.Reports;
 
@@ -31,7 +32,10 @@ public static class HistorySetup
     }
 
     /// <summary>Job options for a request. "All accounts" on this PC without administrator becomes your own account plus a note.</summary>
-    public static HistoryJobOptions Options(HistoryRequest request, bool elevated)
+    public static HistoryJobOptions Options(HistoryRequest request, bool elevated) => Options(request, elevated, InteractiveUser.Current);
+
+    /// <summary>As above; this PC's own account is <paramref name="accounts"/>' signed-in one, and the report says so when that is not the account PCPorter runs as.</summary>
+    public static HistoryJobOptions Options(HistoryRequest request, bool elevated, Accounts accounts)
     {
         var notes = new List<string>();
         var all = request.AllUsers;
@@ -40,6 +44,7 @@ public static class HistorySetup
             notes.Add(NotAdminNote);
             all = false;
         }
+        if (request.OfflineRoot is null && !all && accounts.Note is { } note) notes.Add(note);
         return new HistoryJobOptions(all, request.RestorePoints, notes, Elevated: elevated);
     }
 

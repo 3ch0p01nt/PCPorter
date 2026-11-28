@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using PCPorter.App.Infrastructure;
@@ -39,6 +37,7 @@ public partial class HistoryPage : Page
         OtherDrive.Checked += (_, _) => UpdateOptions();
         UpdateOptions();
         ShowLastRun();
+        Drives.SelectionChanged += (_, _) => UpdateDriveHint();
         Loaded += async (_, _) =>
         {
             if (_seen) return;
@@ -100,7 +99,13 @@ public partial class HistoryPage : Page
         var candidates = await Task.Run(WindowsDrives.Find);
         Drives.ItemsSource = candidates;
         Drives.SelectedItem = candidates.FirstOrDefault(c => c.Usable);
-        DriveHint.Text = WindowsDrives.Hint(candidates, _elevated);
+        UpdateDriveHint();
+    }
+
+    /// <summary>What was found, with the picked drive's warning (not shut down cleanly) first.</summary>
+    void UpdateDriveHint()
+    {
+        if (Drives.ItemsSource is List<DriveChoice> found) DriveHint.Text = WindowsDrives.Hint(found, _elevated, Drives.SelectedItem as DriveChoice);
     }
 
     async void RefreshDrives_Click(object sender, RoutedEventArgs e) => await RefreshDrives();
@@ -180,15 +185,13 @@ public partial class HistoryPage : Page
         StartButton.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
         Busy.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        LiveStatus.FocusForJob(busy, CancelButton, OpenReport, StartButton);
     }
 
-    /// <summary>Updates the status line and tells Narrator (LiveSetting alone is not announced for TextBlock changes).</summary>
-    void Announce(string text)
-    {
-        Status.Text = text;
-        (UIElementAutomationPeer.FromElement(Status) ?? UIElementAutomationPeer.CreatePeerForElement(Status))
-            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
+    LiveStatus? _status;
+
+    /// <summary>Updates the status line and tells Narrator (see <see cref="LiveStatus"/>).</summary>
+    void Announce(string text) => (_status ??= new LiveStatus(Status)).Set(text);
 
     void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); CancelButton.IsEnabled = false; Announce("Stopping after the current step..."); }
 

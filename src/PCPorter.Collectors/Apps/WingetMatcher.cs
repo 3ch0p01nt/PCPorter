@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Principal;
 using System.Text.Json;
 using PCPorter.Collectors.Sources;
+using PCPorter.Core.Security;
 
 namespace PCPorter.Collectors.Apps;
 
@@ -9,7 +10,8 @@ public sealed record WingetPackage(string Id, string? Version, string Source);
 
 /// <summary>
 /// Maps installed apps to winget package ids. <c>winget export</c> runs only on the live PC and only when PCPorter is
-/// NOT elevated (winget.exe lives in a user-writable folder; an elevated process must never start it).
+/// NOT elevated (winget.exe lives in a user-writable folder; an elevated process must never start it), as the account
+/// signed in to Windows.
 /// Never passes --accept-source-agreements.
 /// </summary>
 public static class WingetMatcher
@@ -29,11 +31,14 @@ public static class WingetMatcher
         foreach (var record in WingetIndex.OpenTracking(ctx.Source, notes)) tracked += record.Match(apps);
         if (tracked > 0) notes.Add($"{tracked} app(s) were installed with winget or the Store, according to winget's own records.");
         ct.ThrowIfCancellationRequested();
-        if (ctx.Source.IsLive && !elevated) RunExport(ctx, apps, notes, ct);
+        // winget export describes the account it runs as; when that is not the one signed in to Windows (started with
+        // another account's password) it would list the wrong person's apps, so only the catalog is used.
+        bool otherAccount = InteractiveUser.Current.Differ;
+        if (ctx.Source.IsLive && !elevated && !otherAccount) RunExport(ctx, apps, notes, ct);
         ct.ThrowIfCancellationRequested();
         using (var index = WingetIndex.Open(ctx.Source, out var why))
         {
-            if (index is null) { if (!ctx.Source.IsLive || elevated) notes.Add(why!); }
+            if (index is null) { if (!ctx.Source.IsLive || elevated || otherAccount) notes.Add(why!); }
             else notes.Add($"winget catalog: {index.Match(apps)} app(s) matched from {index.PackageCount:N0} known packages.");
         }
         for (int i = 0; i < apps.Count; i++)

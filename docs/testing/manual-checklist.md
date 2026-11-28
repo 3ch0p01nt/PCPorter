@@ -17,7 +17,13 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
 PCPorter always asks for administrator rights (`requireAdministrator`), so there is no non-administrator run to test.
 - [ ] Double-click PCPorter.exe: the administrator prompt appears ("Unknown publisher" for an unsigned build). Press
       Yes. The title says `PCPorter  -  running as administrator`. Home shows three tiles.
-- [ ] Start it again while it is open: a box says "PCPorter is already running." The first window stays open.
+- [ ] Start it again while it is open: no message box; the first window comes to the front (restored if it was
+      minimized) and stays the only one.
+- [ ] Family PC (needs a second, administrator account): signed in as a standard user, start PCPorter and type the
+      administrator's name and password at the prompt. Every page shows "Checking the account of <you> (PCPorter was
+      started with <admin>'s password)." Web history and Images viewed read your account, not the administrator's, and
+      their reports carry the same note. The case folder's Properties > Security lists SYSTEM, Administrators, you and
+      the administrator. Signed in as the administrator itself, the line is not shown.
 - [ ] Click "Move to my new PC": a box says backup and restore are still being built and points to the health check.
 - [ ] The light/dark theme follows Windows (switch it in Settings > Personalization > Colors while the app is open).
 - [ ] About: the version shows. "Open log folder" opens `C:\ProgramData\PCPorter\logs`.
@@ -38,7 +44,11 @@ PCPorter always asks for administrator rights (`requireAdministrator`), so there
       that opens shows what was checked so far. The controls are enabled again.
 
 ## 3. Health and security (another PC's drive)
-- [ ] Choose "Another PC's drive" and press Refresh. `P:\` appears in the list.
+- [ ] Choose "Another PC's drive" and press Refresh. `P:\` appears in the list with its Windows version
+      (for example `P:\ Windows 10 Pro (build 19045)`).
+- [ ] A drive from a PC that was shut down with Fast Startup on (or crashed): picking it shows "This drive was not shut
+      down cleanly (Fast Startup or a crash). PCPorter only reads it, but some recent changes may be missing." under the
+      list. A cleanly shut down drive shows no such line.
 - [ ] Set the save folder to `P:\out` and press Start: "Pick another folder" (results can't go on the drive being
       checked). Nothing is created on `P:`.
 - [ ] Set it to `C:\PCPorterCases\regress\fixture-oldpc\out` (the same drive reached without the `P:` letter) and
@@ -53,8 +63,10 @@ PCPorter always asks for administrator rights (`requireAdministrator`), so there
 - [ ] Build the gallery into `C:\PCPorterCases\manual`. While it runs, the folder, checkboxes and Start are greyed
       out and Cancel works.
 - [ ] Note the folders in `C:\PCPorterCases\manual\PCPorter`. Start the gallery again and press Cancel while it
-      runs: "Stopped", and no new case folder is left in `C:\PCPorterCases\manual\PCPorter` (not even a half-written
-      one or a `work` folder).
+      runs: Cancel greys itself, the status says "Stopping after the current step...", then "Stopped" (amber), and no
+      new case folder is left in `C:\PCPorterCases\manual\PCPorter` (not even a half-written one or a `work` folder).
+- [ ] Keyboard only (Health, Web history, Images viewed): press Start with Enter. Focus moves to Cancel while it runs,
+      then to "Open the report" when it ends (to Start after a Cancel).
 - [ ] Open the report:
   - [ ] Pictures load.
   - [ ] Filters and grouping change the grid: folder, website, status, month and source.
@@ -97,13 +109,15 @@ PCPorter always asks for administrator rights (`requireAdministrator`), so there
       `work` folder in the save folder, no PCPorter.exe in Task Manager, and `vssadmin list shadows` (administrator) lists
       no shadow copy made by PCPorter.
 
-## 6. Narrator (Health and Web history pages)
+## 6. Narrator (Health, Web history and Images viewed pages)
 - [ ] Turn on Narrator (Ctrl+Win+Enter). Tab through the Health page: every control is read with a name, including
       the drive list ("Drive with the other PC's Windows").
 - [ ] Start a scan. Narrator reads the steps ("Step 2 of 5: ...") and the finish message without moving focus.
 - [ ] Cancel is read as "Stopping after the current step...", then "Scan stopped.".
 - [ ] Web history: every control is read with a name. During a run Narrator reads each browser as it is read, then
       "Report ready." with the counts.
+- [ ] Images viewed: during a run Narrator reads progress now and then (never a file path), and at the end
+      "Gallery ready." with the counts.
 
 ## 7. Clean-up
 - [ ] `subst P: /D`. Delete `C:\PCPorterCases\manual` if the results are no longer needed.

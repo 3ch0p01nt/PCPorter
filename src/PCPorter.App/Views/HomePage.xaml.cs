@@ -1,8 +1,5 @@
 using System.IO;
-using System.Security.Principal;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using PCPorter.App.Infrastructure;
@@ -75,10 +72,14 @@ public partial class HomePage : Page
 
     void OpenCase_Click(object sender, RoutedEventArgs e)
     {
-        if (Cases.SelectedItem is not FoundCase c || WindowsIdentity.GetCurrent().User is not { } me) return;
+        if (Cases.SelectedItem is not FoundCase c) return;
+        // The account signed in to Windows: File Explorer opens the results as that account, also when PCPorter was
+        // started with an administrator's password.
+        var signedIn = InteractiveUser.Current.SignedIn;
+        var me = signedIn.Sid;
         if (!OtherPcCases.CanRead(c.Path, me))
         {
-            var account = WindowsIdentity.GetCurrent().Name;
+            var account = signedIn.Name;
             var answer = MessageBox.Show(
                 $"These results were saved by PCPorter on {c.ComputerName}, and only that PC's account can open them.\n\n" +
                 $"Let this account ({account}) read them? Nobody else gets access, and nothing in the results is changed.",
@@ -87,7 +88,7 @@ public partial class HomePage : Page
             try
             {
                 OtherPcCases.GrantRead(c.Path, me);
-                Log.Information("gave the current account read access to a case folder from another PC");
+                Log.Information("gave the signed-in account read access to a case folder from another PC");
             }
             catch (CaseLocationRejectedException ex) { Announce(ex.Message); return; }
             catch (Exception ex) when (ex is UnauthorizedAccessException or System.ComponentModel.Win32Exception or IOException
@@ -103,11 +104,8 @@ public partial class HomePage : Page
         Announce(CaseLinks.OpenCaseFolder(c.Path) ? "Opened the results in File Explorer." : "The results folder could not be opened.");
     }
 
-    /// <summary>Updates the status line and tells Narrator (LiveSetting alone is not announced for TextBlock changes).</summary>
-    void Announce(string text)
-    {
-        CasesStatus.Text = text;
-        (UIElementAutomationPeer.FromElement(CasesStatus) ?? UIElementAutomationPeer.CreatePeerForElement(CasesStatus))
-            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
+    LiveStatus? _status;
+
+    /// <summary>Updates the status line and tells Narrator (see <see cref="LiveStatus"/>).</summary>
+    void Announce(string text) => (_status ??= new LiveStatus(CasesStatus)).Set(text);
 }

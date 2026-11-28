@@ -1,4 +1,5 @@
 using PCPorter.Core.Case;
+using PCPorter.Core.Security;
 using PCPorter.Forensics.BrowserHistory;
 using PCPorter.Reports;
 
@@ -32,6 +33,20 @@ public sealed class HistorySetupTests : IDisposable
         Assert.True(o.AllUsers);
         Assert.False(o.RestorePoints);
         Assert.Empty(o.ExtraNotes!);
+    }
+
+    [Fact]
+    public void Another_admins_password_at_UAC_is_named_in_the_report()
+    {
+        var admin = new Account(new("S-1-5-21-1-2-3-500"), @"PC\Dad", @"C:\Users\Dad");
+        var kid = new Account(new("S-1-5-21-1-2-3-1001"), @"PC\Sam", @"C:\Users\Sam");
+        var differ = InteractiveUser.Decide(admin, kid);
+        var mine = HistorySetup.Options(new HistoryRequest(_temp, null, AllUsers: false, RestorePoints: false), elevated: true, differ);
+        Assert.Contains("Checking the account of Sam (PCPorter was started with Dad's password).", mine.ExtraNotes!);
+        // Every account, or another PC's drive: no single "this account", so no note.
+        Assert.Empty(HistorySetup.Options(new HistoryRequest(_temp, null, AllUsers: true, RestorePoints: false), true, differ).ExtraNotes!);
+        Assert.Empty(HistorySetup.Options(new HistoryRequest(_temp, @"D:\", AllUsers: false, RestorePoints: false), true, differ).ExtraNotes!);
+        Assert.Empty(HistorySetup.Options(new HistoryRequest(_temp, null, AllUsers: false, RestorePoints: false), true, InteractiveUser.Decide(kid, kid)).ExtraNotes!);
     }
 
     [Fact]

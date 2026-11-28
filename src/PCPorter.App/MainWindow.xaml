@@ -8,15 +8,20 @@
   <Grid>
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
     <ui:TitleBar Grid.Row="0" x:Name="AppTitle" Title="PCPorter" />
 
+    <!-- Shown on every page when PCPorter was started with another account's password at the UAC prompt. -->
+    <TextBlock Grid.Row="1" x:Name="AccountNote" Visibility="Collapsed" TextWrapping="Wrap" Margin="16,0,16,6"
+               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
     <!-- NavigationCacheMode="Required": one instance of each page for the whole session, so a page's inputs, results and
          a still-running job survive clicking elsewhere. WPF-UI 4.3.0 caches by page type, and Nav.Navigate(typeof(X))
          looks up these same items, so the Home tiles and in-page links reuse the cached page too. -->
-    <ui:NavigationView Grid.Row="1" x:Name="Nav" PaneDisplayMode="Left" IsBackButtonVisible="Collapsed"
+    <ui:NavigationView Grid.Row="2" x:Name="Nav" PaneDisplayMode="Left" IsBackButtonVisible="Collapsed"
                        OpenPaneLength="220">
       <ui:NavigationView.MenuItems>
         <ui:NavigationViewItem NavigationCacheMode="Required" Content="Home" TargetPageType="{x:Type views:HomePage}">

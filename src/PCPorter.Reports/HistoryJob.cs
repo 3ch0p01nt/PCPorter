@@ -3,6 +3,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using PCPorter.Collectors.Sources;
 using PCPorter.Core.Case;
+using PCPorter.Core.Security;
 using PCPorter.Core.Snapshots;
 using PCPorter.Forensics.BrowserHistory;
 
@@ -11,7 +12,7 @@ namespace PCPorter.Reports;
 /// <param name="AllUsers">Read every account (live: needs administrator rights). Offline drives always show every account.</param>
 /// <param name="RestorePoints">Also look for older history in existing restore points (live runs as administrator only).</param>
 /// <param name="ExtraNotes">Notes from the caller (e.g. "not running as administrator").</param>
-/// <param name="CurrentUserSid">Test hook: whose account a live run reads. Default: the account running PCPorter.</param>
+/// <param name="CurrentUserSid">Test hook: whose account a live run reads. Default: the account signed in to Windows (see InteractiveUser).</param>
 /// <param name="RestorePointRoots">Test hook: restore points to read instead of this PC's shadow copies.</param>
 /// <param name="Elevated">Test hook: whether a live run counts as administrator. Default: the real token.</param>
 /// <param name="Snapshots">Test hook: who makes the temporary shadow copy for Internet Explorer history. Default: Windows (VSS).</param>
@@ -177,19 +178,17 @@ public static class HistoryJob
 
     const int WorkDeleteAttempts = 5;
 
-    /// <summary>Live: the person running PCPorter (every account with AllUsers). Offline: every account. Unavailable profiles become notes.</summary>
+    /// <summary>Live: the account signed in to Windows (every account with AllUsers). Offline: every account. Unavailable profiles become notes.</summary>
     static List<UserProfile> Users(ISystemSource source, HistoryJobOptions options, List<string> notes)
     {
         IEnumerable<UserProfile> chosen = source.Users;
         if (source.IsLive && !options.AllUsers)
         {
-            var sid = options.CurrentUserSid ?? WindowsIdentity.GetCurrent().User?.Value;
+            var signedIn = InteractiveUser.Current.SignedIn;   // not the admin whose password was typed at UAC
+            var sid = options.CurrentUserSid ?? signedIn.Sid.Value;
             var me = source.Users.Where(u => string.Equals(u.Sid, sid, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (me.Count == 0 && options.CurrentUserSid is null)
-            {
-                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                me = [new UserProfile(sid ?? "", Environment.UserName, home, null, home)];
-            }
+            if (me.Count == 0 && options.CurrentUserSid is null && signedIn.ProfilePath is { } home)
+                me = [new UserProfile(sid, signedIn.ShortName, home, null, home)];
             chosen = me;
         }
         var list = new List<UserProfile>();

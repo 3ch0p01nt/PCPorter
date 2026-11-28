@@ -1,3 +1,4 @@
+using PCPorter.Core.Security;
 using PCPorter.Core.Snapshots;
 using PCPorter.Forensics.BrowserCache;
 using PCPorter.Forensics.Gallery;
@@ -19,8 +20,11 @@ public static class GalleryJobFactory
         var extra = new List<IImageEvidenceSource> { new ScreenshotSource(), new RecentImageOpensSource() };
         if (s.Web) { extra.Add(new ChromiumCacheSource()); extra.Add(new FirefoxCacheSource()); }
 
-        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        // The account signed in to Windows, not the administrator whose password was typed at the UAC prompt.
+        var accounts = InteractiveUser.Current;
+        var profile = accounts.SignedIn.ProfilePath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var notes = WindowsRecallDetector.DetectAll(profile).ToList();
+        if (!s.AllUsers && accounts.Note is { } who) notes.Add(who);
         if (!elevated) notes.Add("PCPorter is not running as administrator: the Windows Search index and restore points could not be read, so fewer original paths are known.");
 
         return new ThumbnailJobOptions(

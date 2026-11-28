@@ -235,7 +235,7 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
     }
 
     /// <summary>
-    /// Thumbnail folders to read on this running PC. By default only the person running PCPorter;
+    /// Thumbnail folders to read on this running PC. By default only the account signed in to Windows;
     /// <paramref name="allUsers"/> adds every other profile (needs admin, and their consent).
     /// </summary>
     public static IReadOnlyList<ThumbnailSource> LiveSources(bool allUsers = false, string? usersRoot = null, string? currentProfile = null) =>
@@ -249,7 +249,8 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
 
     public static LiveSourceSearch FindLiveSources(bool allUsers = false, string? usersRoot = null, string? currentProfile = null)
     {
-        currentProfile ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        // The account signed in to Windows (not an administrator whose password was typed at the UAC prompt).
+        currentProfile ??= PCPorter.Core.Security.InteractiveUser.Current.SignedIn.ProfilePath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var list = new List<ThumbnailSource>();
         var skipped = new List<string>();
         IEnumerable<string> profiles = [currentProfile];

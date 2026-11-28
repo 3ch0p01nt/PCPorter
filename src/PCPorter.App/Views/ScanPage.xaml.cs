@@ -3,8 +3,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -47,6 +45,7 @@ public partial class ScanPage : Page
         _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, _memory.SaveFolder);
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
         ShowLastRun();
+        Drives.SelectionChanged += (_, _) => UpdateDriveHint();
         Loaded += async (_, _) =>
         {
             if (_seen) return;
@@ -78,7 +77,13 @@ public partial class ScanPage : Page
         var candidates = await Task.Run(WindowsDrives.Find);
         Drives.ItemsSource = candidates;
         Drives.SelectedItem = candidates.FirstOrDefault(c => c.Usable);
-        DriveHint.Text = WindowsDrives.Hint(candidates, _elevated);
+        UpdateDriveHint();
+    }
+
+    /// <summary>What was found, with the picked drive's warning (not shut down cleanly) first.</summary>
+    void UpdateDriveHint()
+    {
+        if (Drives.ItemsSource is List<DriveChoice> found) DriveHint.Text = WindowsDrives.Hint(found, _elevated, Drives.SelectedItem as DriveChoice);
     }
 
     async void RefreshDrives_Click(object sender, RoutedEventArgs e) => await RefreshDrives();
@@ -188,15 +193,13 @@ public partial class ScanPage : Page
         Inputs.IsEnabled = !busy;
         StartButton.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
+        LiveStatus.FocusForJob(busy, CancelButton, OpenReport, StartButton);
     }
 
-    /// <summary>Updates the status line and tells Narrator (LiveSetting alone is not announced for TextBlock changes).</summary>
-    void Announce(string text)
-    {
-        Step.Text = text;
-        (UIElementAutomationPeer.FromElement(Step) ?? UIElementAutomationPeer.CreatePeerForElement(Step))
-            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
+    LiveStatus? _status;
+
+    /// <summary>Updates the status line and tells Narrator (see <see cref="LiveStatus"/>).</summary>
+    void Announce(string text) => (_status ??= new LiveStatus(Step)).Set(text);
 
     Card AddCard(string title) { var c = new Card(title); _cards.Add(c); return c; }
 

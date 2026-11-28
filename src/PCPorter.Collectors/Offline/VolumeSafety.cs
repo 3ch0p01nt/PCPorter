@@ -10,7 +10,8 @@ namespace PCPorter.Collectors.Offline;
 /// <param name="NextUsn">NTFS change journal position; null if unavailable.</param>
 public sealed record VolumeSafetyReport(bool? Hibernated, bool? Dirty, long? NextUsn)
 {
-    public const string UncleanWarning = "This PC was hibernated or not shut down cleanly - do not let it resume after this.";
+    /// <summary>Hibernated (Fast Startup keeps a hibernation image) or dirty: the drive may not hold the PC's last changes.</summary>
+    public const string UncleanWarning = "This drive was not shut down cleanly (Fast Startup or a crash). PCPorter only reads it, but some recent changes may be missing.";
     public string? Warning => Hibernated == true || Dirty == true ? UncleanWarning : null;
 }
 

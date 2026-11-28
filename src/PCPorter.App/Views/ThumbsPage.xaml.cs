@@ -1,13 +1,11 @@
-using System.Diagnostics;
 using System.IO;
-using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using PCPorter.App.Infrastructure;
 using PCPorter.Core.Case;
 using PCPorter.Core.Config;
-using PCPorter.Forensics.Gallery;
+using PCPorter.Core.Security;
 using PCPorter.Reports;
 using Serilog;
 using Wpf.Ui.Controls;
@@ -18,13 +16,15 @@ public partial class ThumbsPage : Page
 {
     CancellationTokenSource? _cts;
     string? _reportPath, _caseFolder;
-    readonly bool _elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+    readonly bool _elevated = AppFolders.IsElevated;
+    readonly LiveStatus _status;
 
     const string MemoryKey = "thumbs";
 
     public ThumbsPage()
     {
         InitializeComponent();
+        _status = new LiveStatus(Status);
         var memory = Remembered.Pages.Get(MemoryKey);
         _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, memory.SaveFolder);
         Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
@@ -33,7 +33,7 @@ public partial class ThumbsPage : Page
         if (Remembered.LastRunOf(MemoryKey) is { } last)
         {
             _reportPath = last.ReportPath;
-            Status.Text = PageMemoryStore.Describe("Last gallery", last);
+            _status.Set(PageMemoryStore.Describe("Last gallery", last));
             OpenReport.Visibility = Visibility.Visible;
         }
     }
@@ -61,11 +61,13 @@ public partial class ThumbsPage : Page
             Options = Remembered.Options(m, ("webCaches", WebCaches, true), ("fullIndex", FullIndex, true), ("allUsers", AllUsers, _elevated)),
         });
         _reportPath = _caseFolder = null;
-        SetBusy(true);
         Result.IsOpen = false;
         OpenReport.Visibility = Visibility.Collapsed;
+        SetBusy(true);
         _cts = new CancellationTokenSource();
-        var progress = new Progress<string>(m => Status.Text = PCPorter.Core.Security.Redactor.Redact(m));   // UI thread stays free: the job runs on a worker
+        // UI thread stays free: the job runs on a worker. Progress lines are throttled and never read out when they hold a path.
+        var progress = new Progress<string>(m => _status.Progress(Redactor.Redact(m)));
+        _status.Set("Building the gallery...");
         try
         {
             var cts = _cts;
@@ -84,18 +86,20 @@ public partial class ThumbsPage : Page
             var message = msg + (gaps > 0 ? $" {gaps} part{(gaps == 1 ? "" : "s")} could not be read; see the notes in the report." : "");
             Show("Gallery ready", FolderWarnings.Append(message, r.FolderWarnings), warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
             OpenReport.Visibility = CaseLinks.IsReport(_reportPath) ? Visibility.Visible : Visibility.Collapsed;
-            Status.Text = r.ReportPath;
+            _status.Set("Gallery ready. " + msg);
             RememberRun(warnings > 0 ? RunOutcome.Partial : RunOutcome.Ok, message);
         }
         catch (OperationCanceledException)
         {
             // The job removes its case folder (and the pictures it had copied) when it stops before the report.
-            Show("Cancelled", "Nothing was changed on this PC, and the pictures copied so far were removed again.", InfoBarSeverity.Informational);
+            _status.Set("Stopped.");
+            Show("Stopped", "Nothing was changed on this PC, and the pictures copied so far were removed again.", InfoBarSeverity.Warning);
             RememberRun(RunOutcome.Stopped, "Stopped before the gallery was written.");
         }
         catch (Exception ex)
         {
             var err = JobErrors.Describe(ex, "the gallery", Infrastructure.Logging.Folder);
+            _status.Set(err.Title + ".");
             if (err.Kind == JobErrorKind.CantStart) Show(err.Title, err.Message, InfoBarSeverity.Warning);
             else
             {
@@ -107,7 +111,7 @@ public partial class ThumbsPage : Page
         finally { SetBusy(false); _cts?.Dispose(); _cts = null; }
     }
 
-    void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); Status.Text = "Cancelling..."; }
+    void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); CancelButton.IsEnabled = false; _status.Set("Stopping after the current step..."); }
 
     void OpenReport_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenReport(_reportPath);
 
@@ -118,6 +122,7 @@ public partial class ThumbsPage : Page
         Busy.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         OutFolder.IsEnabled = SaveDrives.IsEnabled = WebCaches.IsEnabled = FullIndex.IsEnabled = !busy;
         AllUsers.IsEnabled = !busy && _elevated;
+        LiveStatus.FocusForJob(busy, CancelButton, OpenReport, StartButton);
     }
 
     void Show(string title, string message, InfoBarSeverity severity)

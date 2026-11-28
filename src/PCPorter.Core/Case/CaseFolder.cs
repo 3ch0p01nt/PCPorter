@@ -13,7 +13,7 @@ public sealed record CaseFolderInfo(string Path, IReadOnlyList<string> Warnings)
 public sealed record VolumeFormat(string Name, bool KeepsPermissions);
 
 /// <summary>
-/// Creates a new, private case folder: unique name, protected ACL (SYSTEM, Administrators and the person running
+/// Creates a new, private case folder: unique name, protected ACL (SYSTEM, Administrators, the account signed in to Windows and the one running
 /// PCPorter only), excluded from Windows Search indexing, and never through a junction or symlink. On a drive that
 /// cannot keep permissions (exFAT, FAT32) the folders are made without an ACL and a warning says anyone can read them.
 /// </summary>
@@ -52,7 +52,7 @@ public static class CaseFolder
         return new CaseFolderInfo(path, warnings);
     }
 
-    /// <summary>Folder whose ACL allows only SYSTEM, Administrators and the current user; inherited by everything inside.
+    /// <summary>Folder whose ACL allows only SYSTEM, Administrators and <see cref="PrivateSids()"/>; inherited by everything inside.
     /// On a drive without permissions (exFAT, FAT32) it is a plain folder: setting an ACL there fails.</summary>
     public static void CreatePrivate(string path) => CreatePrivate(path, FormatOf);
 
@@ -87,11 +87,14 @@ public static class CaseFolder
         return work;
     }
 
-    public static IEnumerable<SecurityIdentifier> PrivateSids()
+    /// <summary>SYSTEM, Administrators, the account signed in to Windows and (when different) the account PCPorter runs as.</summary>
+    public static IEnumerable<SecurityIdentifier> PrivateSids() => PrivateSids(InteractiveUser.Current);
+
+    public static IEnumerable<SecurityIdentifier> PrivateSids(Accounts accounts)
     {
         yield return new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
         yield return new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
-        if (WindowsIdentity.GetCurrent().User is { } me) yield return me;
+        foreach (var sid in accounts.CaseOwners) yield return sid;
     }
 
     /// <summary>The file system of the volume holding <paramref name="path"/>, or null when it cannot be read.</summary>
