@@ -67,9 +67,13 @@ public sealed partial class ThumbnailCollector(IThumbnailPathResolver resolver, 
     sealed record Copy(GalleryImage? Image, string SizeClass, bool FreeSpace, string CacheFile, DateTimeOffset CacheCreated, DateTimeOffset CacheModified, DateTimeOffset? RestorePoint);
 
     public GalleryScanResult Collect(IEnumerable<ThumbnailSource> sources, string imagesFolder,
+        IProgress<string>? progress = null, CancellationToken ct = default) =>
+        Collect(sources, new ImageStore(imagesFolder), progress, ct);
+
+    /// <summary>Same, saving pictures into <paramref name="store"/> (shared with the run's other image sources).</summary>
+    public GalleryScanResult Collect(IEnumerable<ThumbnailSource> sources, ImageStore store,
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var store = new ImageStore(imagesFolder);
         var warnings = new List<string>();
         var summaries = new List<CacheFileSummary>();
         var byKey = new Dictionary<(string User, string Kind, ulong Id), Dictionary<string, Copy>>();

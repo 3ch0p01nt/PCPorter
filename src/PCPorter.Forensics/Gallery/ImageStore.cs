@@ -5,7 +5,8 @@ namespace PCPorter.Forensics.Gallery;
 
 /// <summary>
 /// Writes each distinct image once into the report's image folder, named by its content hash.
-/// Uses CreateNew so a pre-planted file is never trusted or overwritten.
+/// Uses CreateNew so a pre-planted file is never overwritten; an existing file under the same name is accepted only
+/// when its bytes are identical (then the picture is already stored). One store is shared by every source of a run.
 /// </summary>
 public sealed class ImageStore(string folder)
 {
@@ -19,15 +20,31 @@ public sealed class ImageStore(string folder)
     public string Save(ReadOnlySpan<byte> image, string extension)
     {
         var name = $"{XxHash64.HashToUInt64(image):x16}.{extension}";
-        if (_written.Add(name))
+        if (_written.Contains(name)) return name;
+        Directory.CreateDirectory(Folder);
+        var path = Path.Combine(Folder, name);
+        try
         {
-            Directory.CreateDirectory(Folder);
-            using var fs = new FileStream(Path.Combine(Folder, name), FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            using var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             fs.Write(image);
             FilesWritten++;
             BytesWritten += image.Length;
         }
+        catch (IOException) when (File.Exists(path))
+        {
+            if (!SameContent(path, image)) throw new IOException($"{name} already exists in the picture folder with different content; it was not trusted.");
+        }
+        _written.Add(name);
         return name;
+    }
+
+    static bool SameContent(string path, ReadOnlySpan<byte> image)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (fs.Length != image.Length) return false;
+        var existing = new byte[image.Length];
+        fs.ReadExactly(existing);
+        return image.SequenceEqual(existing);
     }
 
     public static string Extension(ImageFormat f) => f switch
