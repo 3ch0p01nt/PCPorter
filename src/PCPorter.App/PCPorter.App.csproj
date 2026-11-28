@@ -20,6 +20,9 @@
     <!-- Every restore (build and win-x64 publish) writes the same lock file; otherwise each publish left it modified
          and stamped the release ".dirty". -->
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- The single-file publish turns this analyzer on, which adds the ILLink package to the lock file; a plain build
+         then removed it again. On for every build: same lock file, and single-file problems show up while coding. -->
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
