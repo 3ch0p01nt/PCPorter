@@ -7,7 +7,8 @@
   from its admin-only copy in C:\PCPorterCI. It can also be run by hand from an administrator PowerShell 7.
 
   It never runs the EXE from the user-writable dist folder: the 7 files are first copied to C:\PCPorterCI\run
-  (administrators only) and their SHA-256 is recorded. Results: <OutRoot>\smoke-<time>\result.json, and a copy at
+  (administrators only) and the EXE's SHA-256 is recorded as facts.exeSha256 (package.ps1 zips only an EXE whose hash
+  matches a passing, non-DryRun smoke-last.json). Results: <OutRoot>\smoke-<time>\result.json, and a copy at
   <OutRoot>\smoke-last.json for regress.ps1. Exit code 0 = every check passed.
 #>
 #Requires -Version 7
@@ -16,7 +17,9 @@ param(
     [string] $Fixture = 'C:\PCPorterCases\regress\fixture-oldpc',
     [string] $OutRoot = 'C:\PCPorterCases\regress',
     [string] $RunDir = 'C:\PCPorterCI\run',
-    [switch] $DryRun   # testing this script without elevation: live scans then fail with exit 4, everything else runs
+    # Testing this script without elevation: the EXE asks for administrator (requireAdministrator), so a non-elevated
+    # start of it fails to launch at all; every check that runs it then fails with code -1. Everything else runs.
+    [switch] $DryRun
 )
 $ErrorActionPreference = 'Stop'
 $Canary = 'Hunter2Canary'
@@ -154,6 +157,28 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
         $afterHistory = Get-Fingerprint $Fixture
         $changed = @($before.Keys + $afterHistory.Keys | Sort-Object -Unique | Where-Object { $before[$_] -ne $afterHistory[$_] })
         Add-Check 'The fake old drive is unchanged after the history report' ($changed.Count -eq 0) ((@($changed) | Select-Object -First 5) -join ', ')
+
+        # Saving onto the drive being checked is refused (exit 3) and writes nothing. A subst letter makes the fake
+        # drive a drive of its own, as a connected old disk would be; the app must see through the letter.
+        $letter = [char[]](90..68) | Where-Object { -not (Test-Path "$($_):\") } | Select-Object -First 1
+        if ($letter) {
+            $drive = "${letter}:"
+            & subst.exe $drive $Fixture | Out-Null
+            try {
+                foreach ($cmd in 'scan', 'history') {
+                    $target = "$drive\PCPorter-smoke-must-not-exist-$cmd"
+                    $sdArgs = @($cmd, '--offline', "$drive\", '--out', $target, '--json') + $(if ($cmd -eq 'scan') { '--quiet' } else { @() })
+                    $sd = Invoke-Pcp -Name "$cmd-onto-scanned-drive" -Arguments $sdArgs
+                    $why = (Read-Json $sd.Out).error
+                    $written = (Test-Path -LiteralPath $target) -or (Test-Path -LiteralPath (Join-Path $Fixture "PCPorter-smoke-must-not-exist-$cmd"))
+                    # Exit 3 is also "bad arguments": the reason must be the drive check, not a typo in this script.
+                    Add-Check "${cmd}: saving onto the drive being checked is refused (exit 3), nothing written" ($sd.Code -eq 3 -and $why -match 'drive being checked' -and -not $written) "exit $($sd.Code): $why"
+                }
+            } finally { & subst.exe $drive /D | Out-Null }
+            $afterRefusals = Get-Fingerprint $Fixture
+            $changed = @($before.Keys + $afterRefusals.Keys | Sort-Object -Unique | Where-Object { $before[$_] -ne $afterRefusals[$_] })
+            Add-Check 'The fake old drive is unchanged after the refused saves' ($changed.Count -eq 0) ((@($changed) | Select-Object -First 5) -join ', ')
+        } else { Add-Check 'Saving onto the drive being checked is refused' $false 'no free drive letter for subst' }
         $fo = Invoke-Pcp -Name 'scan-offline-failon' -Arguments 'scan', '--offline', $Fixture, '--out', "$out\offline-failon", '--json', '--quiet', '--fail-on', 'high'
         Add-Check '--fail-on high exits 5 on findings' ($fo.Code -eq 5) "exit $($fo.Code)" $fo.Seconds
         if ((Read-Json $fo.Out).summary.casePath) { $cases += (Read-Json $fo.Out).summary.casePath }
@@ -174,6 +199,9 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     Add-Check 'thumbs: exit 0 or 1 with a JSON summary' ($th.Code -in 0, 1 -and $tj) "exit $($th.Code)" $th.Seconds
     $thumbCase = Get-ChildItem "$out\thumbs" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'case.db') } | Select-Object -First 1
     if ($thumbCase) { $cases += $thumbCase.FullName }
+    # A cancelled gallery must leave no case folder, but cancelling needs a Ctrl+C delivered to the EXE's console,
+    # which this script cannot send to an elevated child reliably. Covered by the manual checklist (section 4).
+    Add-Check 'thumbs: a cancelled run leaves no case folder' $true 'not automated: see docs/testing/manual-checklist.md' -Skip
 
     # Web history of this PC (elevated: restore points and IE through a temporary shadow copy). The canary scan below covers it.
     $hl = Invoke-Pcp -Name 'history-live' -Arguments 'history', '--out', "$out\history", '--json'
@@ -213,7 +241,7 @@ if (Test-Path $last) {
 }
 
 $failed = @($checks | Where-Object status -eq 'FAIL').Count
-$result = [ordered]@{ started = $started.ToString('o'); seconds = [int]((Get-Date) - $started).TotalSeconds; folder = $out; ok = ($failed -eq 0); failed = $failed; facts = $facts; checks = $checks }
+$result = [ordered]@{ started = $started.ToString('o'); seconds = [int]((Get-Date) - $started).TotalSeconds; folder = $out; ok = ($failed -eq 0); failed = $failed; dryRun = [bool]$DryRun; facts = $facts; checks = $checks }
 $json = $result | ConvertTo-Json -Depth 6
 $json | Out-File (Join-Path $out 'result.json') -Encoding utf8
 $json | Out-File $last -Encoding utf8

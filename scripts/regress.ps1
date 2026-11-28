@@ -43,10 +43,12 @@ function Invoke-Smoke {
         Write-Host 'Tier 4 needs a one-time setup. In an administrator PowerShell 7 run: scripts\regress\install-smoke-task.ps1' -ForegroundColor Yellow
         return $false
     }
-    # Without read access to C:\PCPorterCI (setups made before users could read it) the file just looks missing.
+    # Without read access to C:\PCPorterCI (setups made before users could read it) the file just looks missing. Running
+    # an installed copy nobody can compare with the repo would test an unknown script, so that is a failure.
     $installedHash = try { (Get-FileHash -LiteralPath $installed -ErrorAction Stop).Hash } catch { 'unreadable' }
     if ($installedHash -eq 'unreadable') {
-        Write-Host 'Cannot read the installed smoke.ps1 to compare it with the repo (set up before users got read access); running it anyway. Re-run install-smoke-task.ps1 as administrator to enable the check.' -ForegroundColor Yellow
+        Write-Host "FAIL cannot read the installed $installed to compare it with the repo (missing, or set up before users got read access). Re-run scripts\regress\install-smoke-task.ps1 in an administrator PowerShell 7." -ForegroundColor Red
+        return $false
     } elseif ($installedHash -ne (Get-FileHash $repoSmoke).Hash) {
         Write-Host 'smoke.ps1 changed since the task was set up. Re-run scripts\regress\install-smoke-task.ps1 as administrator.' -ForegroundColor Yellow
         return $false
@@ -56,9 +58,22 @@ function Invoke-Smoke {
     dotnet publish (Join-Path $repo 'src\PCPorter.App') -p:PublishProfile=win-x64 -o $dist -nologo -v q | Out-File (Join-Path $run 'publish.txt')
     if ($LASTEXITCODE -ne 0) { Write-Host 'PUBLISH FAILED (see publish.txt)' -ForegroundColor Red; return $false }
 
+    # A fresh fake drive every run: a leftover one from an older build would let a broken export pass unnoticed.
+    if (Test-Path -LiteralPath $fixture) {
+        try { Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction Stop }
+        catch { Write-Host "Could not delete the old fake drive at ${fixture}: $($_.Exception.Message)" -ForegroundColor Red; return $false }
+    }
+    New-Item -ItemType Directory -Force $fixture | Out-Null
+    $fixtureLog = Join-Path $run 'fixture.txt'
     $env:PCPORTER_FIXTURE_OUT = $fixture
-    try { dotnet test (Join-Path $repo 'tests\PCPorter.Reports.Tests') --no-build --filter 'FullyQualifiedName~Export_fixture_drive_for_the_smoke_run' -nologo | Out-File (Join-Path $run 'fixture.txt') }
+    try {
+        dotnet test (Join-Path $repo 'tests\PCPorter.Reports.Tests') --no-build --filter 'FullyQualifiedName~Export_fixture_drive_for_the_smoke_run' -nologo 2>&1 | Out-File $fixtureLog
+        $fixtureCode = $LASTEXITCODE
+    }
     finally { Remove-Item Env:PCPORTER_FIXTURE_OUT }
+    # A filter that matches nothing also exits 0: require the export test itself to have passed.
+    $exported = Select-String -Path $fixtureLog -Pattern 'Passed:\s+[1-9]' -Quiet
+    if ($fixtureCode -ne 0 -or -not $exported) { Write-Host "Writing the fake drive failed (dotnet test exit $fixtureCode; see fixture.txt)" -ForegroundColor Red; return $false }
     if (-not (Test-Path (Join-Path $fixture 'Windows\System32\config\SOFTWARE'))) { Write-Host 'Could not write the fake drive (see fixture.txt)' -ForegroundColor Red; return $false }
 
     Write-Host 'Running the elevated smoke task (several minutes)...'
@@ -96,12 +111,15 @@ function Invoke-Smoke {
                 -RedirectStandardOutput (Join-Path $run "render$n.shot.txt") -RedirectStandardError (Join-Path $run "render$n.shot.err.txt") -Wait -NoNewWindow
             # Only the report's own script errors count (Edge's built-in extensions log noise such as "browser is shutting down").
             $errors = Select-String -Path $errFile -Pattern 'Uncaught|CONSOLE.*[Ee]rror' | Where-Object { $_.Line -match 'source: file:' -or $_.Line -match 'Uncaught' }
-            # HealthReport ends with its read-only footer; the gallery has no footer but must render to the end of its page;
-            # History's script fills the form-entries count as its last table, so a count there means the script ran through.
+            # Each marker is written by the page's own script, so it is only there if the script ran through (a page whose
+            # script died still has its static HTML, footer and </body>). HealthReport has no script: its read-only footer.
+            # History's script fills the form-entries count as its last table. The gallery's script fills "N of M shown"
+            # in #count from apply(), its last step; data-rendered="true" on <html> or <body> is accepted too, should
+            # the gallery page set that marker explicitly at the end of its script.
             $expect = switch ($report.Name) {
                 'HealthReport.html' { 'Read-only scan\. Nothing was changed' }
                 'History.html' { 'id="forms-count">\(\d' }
-                default { '</body>' }
+                'Thumbnails.html' { 'id="count">[^<]*\d[^<]* shown<|<(html|body)[^>]*\sdata-rendered="true"' }
             }
             $ok = (Get-Content $domFile -Raw) -match $expect -and -not $errors
             if (-not $ok) { $renderOk = $false }

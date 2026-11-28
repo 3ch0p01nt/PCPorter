@@ -14,9 +14,10 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
 - [ ] Optional: a BitLocker-locked drive (a USB stick, or a VHD with BitLocker turned on and then locked).
 
 ## 1. Start-up and Home
-- [ ] Start PCPorter without administrator rights. The title bar says `PCPorter`. Home shows three tiles.
+PCPorter always asks for administrator rights (`requireAdministrator`), so there is no non-administrator run to test.
+- [ ] Double-click PCPorter.exe: the administrator prompt appears ("Unknown publisher" for an unsigned build). Press
+      Yes. The title says `PCPorter  -  running as administrator`. Home shows three tiles.
 - [ ] Start it again while it is open: a box says "PCPorter is already running." The first window stays open.
-- [ ] Close it. Right-click > Run as administrator. The title says `PCPorter  -  running as administrator`.
 - [ ] Click "Move to my new PC": a box says backup and restore are still being built and points to the health check.
 - [ ] The light/dark theme follows Windows (switch it in Settings > Personalization > Colors while the app is open).
 - [ ] About: the version shows. "Open log folder" opens `C:\ProgramData\PCPorter\logs`.
@@ -40,18 +41,20 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
 - [ ] Choose "Another PC's drive" and press Refresh. `P:\` appears in the list.
 - [ ] Set the save folder to `P:\out` and press Start: "Pick another folder" (results can't go on the drive being
       checked). Nothing is created on `P:`.
+- [ ] Set it to `C:\PCPorterCases\regress\fixture-oldpc\out` (the same drive reached without the `P:` letter) and
+      press Start: refused the same way. No `out` folder appears in the fixture.
 - [ ] Save to `C:\PCPorterCases\manual` instead and run it. The report names OLDPC and Windows 10. It shows the
       planted findings: Winlogon Taskman, the user Run entry in AppData, the forced browser extensions.
 - [ ] With a locked BitLocker drive connected: Refresh lists it as "(locked or not ready)". The hint says how to
       unlock it. Picking it and pressing Start says "Pick a drive".
-- [ ] Start PCPorter without administrator rights, choose "This PC" and press Start: "Administrator rights needed".
-      Another PC's drive still works without administrator rights.
 
 ## 4. Images viewed (gallery)
 - [ ] The OneDrive folder refusal works here too.
-- [ ] Without administrator rights, "Also include the other accounts" is greyed out.
 - [ ] Build the gallery into `C:\PCPorterCases\manual`. While it runs, the folder, checkboxes and Start are greyed
       out and Cancel works.
+- [ ] Note the folders in `C:\PCPorterCases\manual\PCPorter`. Start the gallery again and press Cancel while it
+      runs: "Stopped", and no new case folder is left in `C:\PCPorterCases\manual\PCPorter` (not even a half-written
+      one or a `work` folder).
 - [ ] Open the report:
   - [ ] Pictures load.
   - [ ] Filters and grouping change the grid: folder, website, status, month and source.
@@ -64,15 +67,14 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
 - [ ] Home > "Explore my PC's history" opens Web history (also in the menu on the left). The "Go to Images viewed"
       link opens the gallery page.
 - [ ] The OneDrive folder refusal works here too.
-- [ ] Without administrator rights: "Also include the other accounts" and "Look for older history in existing restore
-      points" are greyed out and the hint under them says why. As administrator both can be ticked.
+- [ ] "Also include the other accounts" and "Look for older history in existing restore points" can both be ticked.
 - [ ] Build the report for this PC into `C:\PCPorterCases\manual`. While it runs, the inputs and Start are greyed out,
       the status line names each browser, and Cancel works ("Stopped", controls enabled again).
 - [ ] When it ends: a sentence with the counts, "Open the report" and "Open the case folder" (History.html, case.db;
       no `work` folder left; Properties > Security lists only SYSTEM, Administrators and you).
 - [ ] Open the report: the visit table scrolls, sorts and filters; Export CSV works; the charts and the coverage table
       match your browsers. No saved passwords, cookies or card numbers appear anywhere.
-- [ ] As administrator, the processing notes say whether restore points and Internet Explorer history were read.
+- [ ] The processing notes say whether restore points and Internet Explorer history were read.
 - [ ] Another PC's drive: choose `P:\`. "All accounts" is ticked and greyed, restore points unticked and greyed.
       Saving to `P:\out` is refused. Saved to `C:\PCPorterCases\manual`, the report shows bob's Chrome (with 8
       recovered visits), Firefox and Internet Explorer history.
@@ -85,6 +87,15 @@ Use the packaged EXE (`C:\PCPorter-dist\PCPorter\PCPorter.exe`), not a debug bui
 - [ ] Close PCPorter and start it again. Web history, Images viewed and Health show the folder, options and drive
       (only if still connected) from the last start, and "Last report: <date time> - <counts>" with Open the report /
       Open the case folder. Delete or move that report, restart: the "Last ..." line is gone.
+- [ ] After a restart, press "Open the report" and "Open the case folder" on the remembered "Last report" line (on
+      Health, Web history and Images viewed): each opens that run's report in the browser and its case folder.
+
+## 5c. Closing during a job
+- [ ] Start a health check (and, separately, a Web history report and a gallery) and close the window while it runs:
+      PCPorter asks before closing. Answer No: the run goes on and finishes normally.
+- [ ] Do it again and answer Yes: the window closes. Nothing is left behind: no half-written case folder and no
+      `work` folder in the save folder, no PCPorter.exe in Task Manager, and `vssadmin list shadows` (administrator) lists
+      no shadow copy made by PCPorter.
 
 ## 6. Narrator (Health and Web history pages)
 - [ ] Turn on Narrator (Ctrl+Win+Enter). Tab through the Health page: every control is read with a name, including
