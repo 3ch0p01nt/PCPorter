@@ -3,6 +3,7 @@ using PCPorter.Core;
 using PCPorter.Core.Case;
 using PCPorter.Core.Cli;
 using PCPorter.Core.Security;
+using PCPorter.Reports;
 
 namespace PCPorter.App.Infrastructure;
 
@@ -36,6 +37,8 @@ public static class JobErrors
 {
     public static JobErrorKind Classify(Exception ex) => ex switch
     {
+        // A scan that failed after creating its case folder wraps the real error.
+        ScanJobFailedException { InnerException: { } inner } => Classify(inner),
         OperationCanceledException => JobErrorKind.Cancelled,
         CaseLocationRejectedException or SourceRejectedException => JobErrorKind.CantStart,
         _ => JobErrorKind.Failed,
@@ -46,12 +49,15 @@ public static class JobErrors
     public static JobError Describe(Exception ex, string what, string logFolder)
     {
         var kind = Classify(ex);
-        var message = Redactor.Redact(ex.Message);
+        var kept = (ex as ScanJobFailedException)?.CaseFolderPath;
+        var cause = ex is ScanJobFailedException { InnerException: { } inner } ? inner : ex;
+        var message = Redactor.Redact(cause.Message)
+            + (kept is null ? "" : $" What was saved before the problem is in {kept}.");
         return kind switch
         {
             JobErrorKind.Cancelled => new(kind, "Stopped", "Stopped before the end. Nothing on the PC was changed."),
             JobErrorKind.CantStart => new(kind, "Can't start", message),
-            _ => ex switch
+            _ => cause switch
             {
                 UnsafeAppFolderException => new(kind, "PCPorter's working folder is not safe", message),
                 IOException or UnauthorizedAccessException => new(kind, $"Couldn't save {what}", message),

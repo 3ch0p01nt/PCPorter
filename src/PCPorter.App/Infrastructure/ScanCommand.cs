@@ -45,15 +45,11 @@ public static class ScanCommand
                     new ScanJobOptions(parse.GetValue(offline)?.FullName, parse.GetValue(defender), elevated),
                     new ConsoleProgress(!asJson && !parse.GetValue(quiet)), cancel.Token);
                 var f = ScanSetup.CountFindings(r);
-                // Findings win over "partial": an offline scan is always partial (no running Windows to ask about
-                // hardware), and --fail-on must still report what it found.
-                bool flagged = parse.GetValue(failOn) is { } level && (f.WorthALook > 0 || level == "unusual" && f.Unusual > 0);
-                int code = r.Run.Cancelled ? ExitCodes.Cancelled
-                    : flagged ? ExitCodes.FindingsFound
-                    : r.Run.AnyFailed || r.Run.AnyPartial ? ExitCodes.Partial : ExitCodes.Ok;
+                // One rule shared with the page: cancelled 6 > --fail-on findings 5 > partial or offline 1 > 0.
+                int code = ScanJob.ExitCode(r, parse.GetValue(failOn));
                 var summary = new
                 {
-                    scanId = r.ScanId, caseFolder = r.CaseFolder, report = r.ReportPath, status = r.Run.Overall,
+                    scanId = r.ScanId, caseFolder = r.CaseFolder, report = r.ReportPath, status = r.Status,
                     collectors = r.Run.Runs.Select(x => new { name = x.Collector, status = x.Status.ToString(), items = x.Items }),
                     findings = new { worthALook = f.WorthALook, unusual = f.Unusual },
                     warnings = r.Warnings.Count,

@@ -128,7 +128,7 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     $cases = @()
     foreach ($j in @($pj, $fj)) {
         if (-not $j) { continue }
-        $case = $j.summary.casePath; $cases += $case
+        $case = $j.summary.caseFolder; $cases += $case
         $ok = (Test-Path (Join-Path $case 'case.db')) -and (Test-Path (Join-Path $case 'HealthReport.html')) -and
               @(Get-ChildItem (Join-Path $case 'scan') -Filter *.json).Count -ge 5 -and -not (Test-Path (Join-Path $case 'work'))
         Add-Check "Case folder complete, work folder gone ($(Split-Path $case -Leaf))" $ok
@@ -140,8 +140,8 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
         $off = Invoke-Pcp -Name 'scan-offline' -Arguments 'scan', '--offline', $Fixture, '--out', "$out\offline", '--json', '--quiet'
         $oj = Read-Json $off.Out
         $facts.offlineFindings = $oj.summary.findings
-        Add-Check 'Offline scan of the fake drive: findings reported' ($off.Code -in 0, 1 -and $oj.summary.findings.worthALook -gt 0 -and $oj.summary.findings.unusual -gt 0) "exit $($off.Code); $($oj.summary.findings | ConvertTo-Json -Compress)" $off.Seconds
-        if ($oj) { $cases += $oj.summary.casePath }
+        Add-Check 'Offline scan of the fake drive: findings reported, exit 1 (offline is always partial)' ($off.Code -eq 1 -and $oj.summary.findings.worthALook -gt 0 -and $oj.summary.findings.unusual -gt 0) "exit $($off.Code); $($oj.summary.findings | ConvertTo-Json -Compress)" $off.Seconds
+        if ($oj) { $cases += $oj.summary.caseFolder }
         $after = Get-Fingerprint $Fixture
         $changed = @($before.Keys + $after.Keys | Sort-Object -Unique | Where-Object { $before[$_] -ne $after[$_] })
         Add-Check 'The fake old drive is byte-for-byte unchanged' ($changed.Count -eq 0) ((@($changed) | Select-Object -First 5) -join ', ')
@@ -181,7 +181,7 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
         } else { Add-Check 'Saving onto the drive being checked is refused' $false 'no free drive letter for subst' }
         $fo = Invoke-Pcp -Name 'scan-offline-failon' -Arguments 'scan', '--offline', $Fixture, '--out', "$out\offline-failon", '--json', '--quiet', '--fail-on', 'high'
         Add-Check '--fail-on high exits 5 on findings' ($fo.Code -eq 5) "exit $($fo.Code)" $fo.Seconds
-        if ((Read-Json $fo.Out).summary.casePath) { $cases += (Read-Json $fo.Out).summary.casePath }
+        if ((Read-Json $fo.Out).summary.caseFolder) { $cases += (Read-Json $fo.Out).summary.caseFolder }
     } else { Add-Check 'Offline scan of the fake drive' $false "no fixture at $Fixture (regress.ps1 -Level release writes it)" }
 
     $bad = Invoke-Pcp -Name 'bad-args' -Arguments 'scan', '--no-such-option'
@@ -196,7 +196,7 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
     $th = Invoke-Pcp -Name 'thumbs' -Arguments 'thumbs', '--out', "$out\thumbs", '--json'
     $tj = Read-Json $th.Out
     $facts.thumbsSummary = $tj
-    Add-Check 'thumbs: exit 0 or 1 with a JSON summary' ($th.Code -in 0, 1 -and $tj) "exit $($th.Code)" $th.Seconds
+    Add-Check 'thumbs: exit 0 or 1 with a JSON summary' ($th.Code -in 0, 1 -and $tj.summary -and $null -ne $tj.exitCode) "exit $($th.Code)" $th.Seconds
     $thumbCase = Get-ChildItem "$out\thumbs" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'case.db') } | Select-Object -First 1
     if ($thumbCase) { $cases += $thumbCase.FullName }
     # A cancelled gallery must leave no case folder, but cancelling needs a Ctrl+C delivered to the EXE's console,

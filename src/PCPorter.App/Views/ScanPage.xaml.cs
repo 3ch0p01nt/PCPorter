@@ -98,10 +98,10 @@ public partial class ScanPage : Page
         var offline = choice?.Root;
         if (offline is null && !_elevated) { Show("Administrator rights needed", "Close PCPorter and start it again as administrator to check this PC.", InfoBarSeverity.Warning); return; }
         var outRoot = OutFolder.Text.Trim();
-        var check = CaseLocation.Check(outRoot);
+        // Same check the scan job makes (by volume, so subst letters and mount points count as the drive being checked);
+        // asked here too so the person gets the answer before anything starts.
+        var check = CaseLocation.Check(outRoot, offline);
         if (!check.IsAllowed) { Show("Pick another folder", check.Reason!, InfoBarSeverity.Warning); return; }
-        if (offline is not null && string.Equals(Path.GetPathRoot(Path.GetFullPath(outRoot)), offline, StringComparison.OrdinalIgnoreCase))
-        { Show("Pick another folder", "Save the results somewhere other than the drive being checked, so nothing is written to it.", InfoBarSeverity.Warning); return; }
 
         Remembered.Pages.Update(MemoryKey, m => m with
         { SaveFolder = outRoot, Source = offline is null ? PageMemory.ThisPc : PageMemory.OtherDrive, DriveRoot = offline });
@@ -142,8 +142,10 @@ public partial class ScanPage : Page
             {
                 var finished = f.WorthALook == 0 ? "Scan finished. Nothing stood out."
                     : $"Scan finished. {f.WorthALook} {(f.WorthALook == 1 ? "thing is" : "things are")} worth a look.";
-                var gaps = r.Run.AnyFailed || r.Run.AnyPartial;
-                var detail = gaps ? "Some parts could not be checked; the report says which and why." : "All parts were checked.";
+                var gaps = r.Outcome is not ScanOutcome.Ok;
+                var detail = r.CheckedWithLimits
+                    ? "Checked from the drive. Antivirus state and hardware health can only be read on a running PC."
+                    : gaps ? "Some parts could not be checked; the report says which and why." : "All parts were checked.";
                 Announce(finished);
                 Banner.IsOpen = f.WorthALook > 0;
                 Show("Done", FolderWarnings.Append(detail, folderWarnings),

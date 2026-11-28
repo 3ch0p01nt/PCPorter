@@ -90,7 +90,8 @@ public static partial class ScanJob
 
         var software = source.OpenHive(Hive.Software);
         var computer = source.OpenHive(Hive.System)?.Open($@"{source.CurrentControlSet()}\Control\ComputerName\ComputerName")?.GetString("ComputerName");
-        var version = typeof(ScanJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "dev";
+        // The full stamped version (0.1.0+<commit date>.<hash>), so a report says which build made it.
+        var version = typeof(ScanJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
         var scanId = Guid.NewGuid().ToString("N")[..12];
         var info = new ScanInfo(scanId, started, version, source.IsLive ? "live" : "offline",
             software?.Open(@"Microsoft\Cryptography")?.GetString("MachineGuid"), computer,
