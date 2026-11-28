@@ -18,6 +18,8 @@ namespace PCPorter.Reports;
 public sealed record HistoryJobOptions(bool AllUsers = false, bool RestorePoints = true, IReadOnlyList<string>? ExtraNotes = null, string? CurrentUserSid = null,
     IReadOnlyList<RestorePointRoot>? RestorePointRoots = null, bool? Elevated = null, ISnapshotProvider? Snapshots = null);
 
+/// <param name="FolderWarnings">Always empty: the case folder's warnings are part of <see cref="HistoryScan.Warnings"/> (shown in the
+/// report and counted once). Kept so callers that add the two lists still count correctly.</param>
 public sealed record HistoryJobResult(string ReportPath, string CaseFolder, HistoryScan Scan, IReadOnlyList<string> FolderWarnings);
 
 /// <summary>
@@ -115,6 +117,10 @@ public static class HistoryJob
                 }
             }
 
+            // Warnings about the case folder (e.g. a drive that cannot keep it private) are shown with the rest, so the
+            // report, the page and the CLI count the same warnings.
+            warnings.InsertRange(0, folder.Warnings);
+
             // The copies are no longer needed: remove them before writing anything else, and say so if that fails.
             if (!DeleteWork(work))
                 warnings.Add($"The temporary work folder {work} could not be deleted; it holds private copies of browser files. " +
@@ -130,7 +136,7 @@ public static class HistoryJob
             var computer = source.IsLive ? Environment.MachineName : $"Drive {source.ReadRoot}";
             var meta = new ReportMeta(computer, when, version, users.Select(u => u.UserName).ToList(), options.AllUsers || !source.IsLive);
             var report = HistoryReport.WriteFile(scan, meta, folder.Path);
-            return new HistoryJobResult(report, folder.Path, scan, folder.Warnings);
+            return new HistoryJobResult(report, folder.Path, scan, []);
         }
         finally
         {
