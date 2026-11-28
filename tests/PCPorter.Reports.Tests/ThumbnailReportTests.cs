@@ -61,6 +61,19 @@ public class GalleryReportTests
     }
 
     [Fact]
+    public void Every_original_status_has_a_label_help_text_and_filter()
+    {
+        var html = GalleryReport.Render(Result(null), Meta);
+        foreach (var s in Enum.GetNames<OriginalStatus>())
+        {
+            Assert.Matches($@"statusText = \{{[^}}]*\b{s}: """, html);
+            Assert.Matches($@"statusHelp = \{{[^}}]*\b{s}: """, html);
+            Assert.Contains($"<option value=\"{s}\">", html);
+            Assert.Contains($".s-{s} {{", html);
+        }
+    }
+
+    [Fact]
     public void WriteFile_refuses_to_overwrite()
     {
         var dir = Directory.CreateTempSubdirectory("pcporter-report").FullName;

@@ -145,7 +145,7 @@ public static class EvidenceMapper
         var sources = new List<string>();
         if (ev.FirstSeenUtc is { } f) sources.Add($"{f:u}: {ev.TimeMeaning ?? "first seen"} (earliest)");
         if (ev.LastSeenUtc is { } l) sources.Add($"{l:u}: {ev.TimeMeaning ?? "last seen"} (latest)");
-        var status = ev.OriginalPath is null ? OriginalStatus.Unknown : locator.Locate(ev.OriginalPath);
+        var status = ev.OriginalPath is null ? OriginalStatus.Unknown : locator.Locate(ev.OriginalPath, ev.VolumeSerial);
         var id = $"{kind[0]}-{ev.User}-{System.IO.Hashing.XxHash64.HashToUInt64(System.Text.Encoding.UTF8.GetBytes($"{ev.Source}|{ev.OriginalPath}|{ev.Url}|{ev.FirstSeenUtc}|{ev.LastSeenUtc}")):x16}";
         return new GalleryItem(id, kind, ev.Source, ev.Evidence, ev.User, CacheId: null, ev.OriginalPath, ev.Url, status,
             FoundInFreeSpace: false, Best: image, Images: image is null ? [] : [image],

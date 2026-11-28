@@ -55,6 +55,7 @@
   .s-Exists { color:var(--ok); } .s-Exists::before { border-radius:50%; }
   .s-Deleted { color:var(--del); } .s-Deleted::before { transform:rotate(45deg); }
   .s-Unreachable { color:var(--unr); } .s-Unreachable::before { clip-path:polygon(50% 0,100% 100%,0 100%); }
+  .s-FolderGone { color:var(--unr); } .s-FolderGone::before { border-radius:50%; background:transparent; border:1.5px solid currentColor; width:5px; height:5px; }
   .s-Unknown { color:var(--unk); } .s-Unknown::before { border-radius:2px; opacity:.5; }
   .s-rec { color:var(--rec); }
   .tag { color:var(--accent); }
@@ -114,7 +115,7 @@
     <select id="kind" aria-label="Source"></select>
     <select id="status" aria-label="Original file">
       <option value="">Original: any</option><option value="Deleted">Original deleted</option><option value="Exists">Original still exists</option>
-      <option value="Unreachable">Original unreachable</option><option value="Unknown">Original unknown</option>
+      <option value="FolderGone">Original's folder gone</option><option value="Unreachable">Original unreachable</option><option value="Unknown">Original unknown</option>
     </select>
     <select id="pic" aria-label="Picture"><option value="">Picture: any</option><option value="yes">Has a picture</option><option value="no">No picture kept</option></select>
     <select id="size" aria-label="Size"><option value="">Any size</option></select>
@@ -190,15 +191,16 @@
   const hostOf = u => { try { return new URL(u).hostname || "unknown"; } catch { return "unknown"; } };
   const folderOf = p => { if (!p) return null; const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/")); return i > 0 ? p.slice(0, i) : p; };
   const fmt = d => d ? `${new Date(d).toLocaleString()} (UTC ${new Date(d).toISOString().replace("T", " ").slice(0, 16)})` : "unknown";
-  const statusText = { Exists: "Original still exists", Deleted: "Original deleted", Unreachable: "Original unreachable", Unknown: "Original unknown" };
+  const statusText = { Exists: "Original still exists", Deleted: "Original deleted", FolderGone: "Original's folder gone", Unreachable: "Original unreachable", Unknown: "Original unknown" };
   const statusHelp = {
     Exists: "The original file or folder is still at this path on the scanned PC.",
     Deleted: "The folder could be read and the original is no longer in it.",
-    Unreachable: "The drive is missing, access was denied, or it is a network location, so PCPorter could not check.",
+    FolderGone: "The folder that held the original is no longer at this path: it was moved, renamed or deleted, or the path was on another drive that now uses the same letter. This does not prove the file was deleted.",
+    Unreachable: "The drive is missing or is a different disk than the one recorded, access was denied, or it is a network location (never contacted), so PCPorter could not check.",
     Unknown: "No record says which file this picture came from." };
   const evidenceText = { Displayed: "Windows showed it (thumbnail)", Opened: "Opened in an app", LoadedByWebPage: "Loaded by a web page", OnScreen: "Was on screen (screenshot)", Downloaded: "Saved or received" };
   const kindText = { thumbnail: "File Explorer thumbnails", icon: "Program icons", web: "Web browser caches", screenshot: "Screenshots", opened: "Recently opened files" };
-  const order = { Deleted: 0, Unreachable: 1, Unknown: 2, Exists: 3 };
+  const order = { Deleted: 0, FolderGone: 1, Unreachable: 2, Unknown: 3, Exists: 4 };
   const tags = store.get("pcporter-tags:" + data.meta.generatedUtc, {});
   const selected = new Set();
   items.forEach((i, n) => { i._n = n; i._lc = ((i.originalPath || "") + " " + (i.url || "") + " " + (i.cacheId || "")).toLowerCase();
@@ -236,6 +238,7 @@
     ["Thumbnails", thumbs.length, { kind: "thumbnail" }],
     ["Original deleted", thumbs.filter(i => i.status === "Deleted").length, { kind: "thumbnail", status: "Deleted" }],
     ["Original still exists", thumbs.filter(i => i.status === "Exists").length, { kind: "thumbnail", status: "Exists" }],
+    ["Original's folder gone", thumbs.filter(i => i.status === "FolderGone").length, { kind: "thumbnail", status: "FolderGone" }],
     ["Original unreachable", thumbs.filter(i => i.status === "Unreachable").length, { kind: "thumbnail", status: "Unreachable" }],
     ["Original unknown", thumbs.filter(i => i.status === "Unknown").length, { kind: "thumbnail", status: "Unknown" }],
     ["Shown, no picture kept", items.filter(i => !i.images.length).length, { pic: "no" }],
