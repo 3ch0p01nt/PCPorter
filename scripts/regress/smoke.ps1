@@ -66,6 +66,11 @@ function Remove-TestDrives {
         Remove-Item -LiteralPath $v.FullName -Force -ErrorAction SilentlyContinue
     }
 }
+Add-Type -Namespace PCPorterSmoke -Name Volume -MemberDefinition @'
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+static extern bool GetVolumeInformationW(string root, System.Text.StringBuilder name, int nameSize, out uint serial, out uint maxLen, out uint flags, System.Text.StringBuilder fs, int fsSize);
+public static bool? IsReadOnly(string root) { uint s, m, f; return GetVolumeInformationW(root, null, 0, out s, out m, out f, null, 0) ? (f & 0x80000) != 0 : (bool?)null; }
+'@ -ErrorAction SilentlyContinue
 function New-TestDrive([string] $Name, [string] $FileSystem, [int] $SizeMB) {
     <# A formatted volume with a drive letter, or $null. Formatted BEFORE it gets a letter, so Explorer never offers to format it. #>
     New-Item -ItemType Directory -Force $VhdDir | Out-Null
@@ -293,9 +298,14 @@ if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal] $me).IsInRole(
             $n = $drives['ReadOnly'].DiskNumber
             Set-Disk -Number $n -IsReadOnly $true; Set-Disk -Number $n -IsOffline $true; Set-Disk -Number $n -IsOffline $false
             Start-Sleep -Seconds 2
-            $rv = Invoke-Pcp -Name 'save-readonly' -Arguments 'scan', '--offline', $Fixture, '--out', $drives['ReadOnly'].Root, '--json', '--quiet'
+            # Going offline drops the drive letter: give it one again (a read-only disk can still get a letter).
+            $p = Get-Partition -DiskNumber $n | Where-Object Type -ne 'Reserved' | Select-Object -First 1
+            if (-not $p.DriveLetter -or $p.DriveLetter -eq [char]0) { $p | Add-PartitionAccessPath -AssignDriveLetter; $p = Get-Partition -DiskNumber $n -PartitionNumber $p.PartitionNumber }
+            $roRoot = "$($p.DriveLetter):\"
+            $roState = "volume read-only: $([PCPorterSmoke.Volume]::IsReadOnly($roRoot))"
+            $rv = Invoke-Pcp -Name 'save-readonly' -Arguments 'scan', '--offline', $Fixture, '--out', $roRoot, '--json', '--quiet'
             $rj = Read-Json $rv.Out
-            Add-Check 'A read-only drive: refused up front with a plain message (exit 3)' ($rv.Code -eq 3 -and $rj.error -match 'write-protected' -and $rj.error -notmatch '   at |Exception') "exit $($rv.Code): $($rj.error ?? $rv.Out.Trim())" $rv.Seconds
+            Add-Check 'A read-only drive: refused up front with a plain message (exit 3)' ($rv.Code -eq 3 -and $rj.error -match 'write-protected' -and $rj.error -notmatch '   at |Exception') "exit $($rv.Code): $($rj.error ?? $rv.Out.Trim()) ($roState)" $rv.Seconds
         } else { Add-Check 'A read-only drive' $false 'test drive could not be created' }
     } else { Add-Check 'Saving to NTFS/exFAT/FAT32 drives' $false "no fixture at $Fixture (regress.ps1 -Level release writes it)" }
 

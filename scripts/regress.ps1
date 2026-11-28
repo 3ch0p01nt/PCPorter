@@ -97,6 +97,13 @@ function Invoke-Smoke {
     # Render check (not elevated): every report opens in headless Edge, shows its footer and logs no script errors.
     $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
     $renderOk = $true
+    function Invoke-Edge([string[]] $Arguments, [string] $Out, [string] $Err, [string] $EdgeProfile) {
+        $p = Start-Process $edge -ArgumentList $Arguments -RedirectStandardOutput $Out -RedirectStandardError $Err -NoNewWindow -PassThru
+        if ($p.WaitForExit(120000)) { return $true }
+        Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($EdgeProfile) } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        return $false
+    }
     if ($edge) {
         $profileDir = Join-Path $run 'edge-profile'
         $n = 0
@@ -106,9 +113,12 @@ function Invoke-Smoke {
             # Edge is a GUI program: '&' neither waits for it nor captures its output, so use Start-Process with files.
             $common = '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', "--user-data-dir=$profileDir$n", '--enable-logging=stderr', '--v=0'
             $domFile = Join-Path $run "render$n.dom.html"; $errFile = Join-Path $run "render$n.err.txt"
-            Start-Process $edge -ArgumentList ($common + '--dump-dom', $uri) -RedirectStandardOutput $domFile -RedirectStandardError $errFile -Wait -NoNewWindow
-            Start-Process $edge -ArgumentList ($common + '--window-size=1280,2400', "--screenshot=$(Join-Path $run "render$n.png")", $uri) `
-                -RedirectStandardOutput (Join-Path $run "render$n.shot.txt") -RedirectStandardError (Join-Path $run "render$n.shot.err.txt") -Wait -NoNewWindow
+            # Headless Edge sometimes never exits after writing its output: each run gets 2 minutes, then its own processes
+            # (found by this run's private profile folder) are stopped. A timed-out DOM dump fails the check below.
+            $timedOut = -not (Invoke-Edge ($common + '--dump-dom', $uri) $domFile $errFile "$profileDir$n")
+            $timedOut = (-not (Invoke-Edge ($common + '--window-size=1280,2400', "--screenshot=$(Join-Path $run "render$n.png")", $uri) `
+                (Join-Path $run "render$n.shot.txt") (Join-Path $run "render$n.shot.err.txt") "$profileDir$n")) -or $timedOut
+            if ($timedOut) { Write-Host "  note: Edge did not exit within 2 minutes for render$n; it was stopped" -ForegroundColor Yellow }
             # Only the report's own script errors count (Edge's built-in extensions log noise such as "browser is shutting down").
             $errors = Select-String -Path $errFile -Pattern 'Uncaught|CONSOLE.*[Ee]rror' | Where-Object { $_.Line -match 'source: file:' -or $_.Line -match 'Uncaught' }
             # Each marker is written by the page's own script, so it is only there if the script ran through (a page whose
