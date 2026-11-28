@@ -1,11 +1,12 @@
 using System.Security.Principal;
 using PCPorter.Collectors.Sources;
+using PCPorter.Core.Security;
 using Windows.ApplicationModel;
 using Windows.Management.Deployment;
 
 namespace PCPorter.Collectors.Apps;
 
-/// <summary>Microsoft Store (MSIX/AppX) apps of the account running PCPorter. Live only.</summary>
+/// <summary>Microsoft Store (MSIX/AppX) apps of the account signed in to Windows. Live only.</summary>
 public static class AppxInventory
 {
     public const string OfflineNote = "Store apps are listed only for the running PC.";
@@ -15,12 +16,16 @@ public static class AppxInventory
         var list = new List<InstalledApp>();
         if (!source.IsLive) { notes.Add(OfflineNote); return list; }
 
+        // The account signed in to Windows, also when an administrator's password was typed at the UAC prompt (listing
+        // another account's packages needs administrator, which PCPorter then has).
+        var accounts = InteractiveUser.Current;
+        var who = accounts.SignedIn;
         IEnumerable<Package> packages;
-        try { packages = new PackageManager().FindPackagesForUser("").ToList(); }
+        try { packages = new PackageManager().FindPackagesForUser(accounts.Differ ? who.Sid.Value : "").ToList(); }
         catch (Exception e) { notes.Add($"Store apps could not be listed on this PC ({e.GetType().Name})."); return list; }
 
-        var sid = WindowsIdentity.GetCurrent().User?.Value;
-        var userName = source.Users.FirstOrDefault(u => u.Sid == sid)?.UserName ?? Environment.UserName;
+        var sid = who.Sid.Value;
+        var userName = source.Users.FirstOrDefault(u => u.Sid == sid)?.UserName ?? who.ShortName;
         int failed = 0;
         foreach (var p in packages)
         {
@@ -47,7 +52,9 @@ public static class AppxInventory
             catch (Exception) { failed++; }
         }
         if (failed > 0) warnings.Add($"{failed} Store app(s) could not be read.");
-        if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+        if (accounts.Differ)
+            notes.Add($"Store apps are listed for {who.ShortName}, the account signed in to Windows (PCPorter was started with {accounts.Process.ShortName}'s password).");
+        else if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
             notes.Add("Store apps are listed for the account running PCPorter.");
         return list;
     }

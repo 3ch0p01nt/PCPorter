@@ -21,6 +21,7 @@ public partial class MainWindow : FluentWindow
     {
         InitializeComponent();
         Title = AppTitle.Title = TitleFor(AppFolders.IsElevated);
+        if (InteractiveUser.Current.Note is { } note) { AccountNote.Text = note; AccountNote.Visibility = Visibility.Visible; }
         SystemThemeWatcher.Watch(this);   // follow Windows light/dark mode and accent color
         WindowFit.Apply(this);            // shrink to small or scaled screens; centred in the area above the taskbar
         Loaded += (_, _) => Nav.Navigate(typeof(Views.HomePage));
