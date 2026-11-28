@@ -116,7 +116,7 @@ public static class ThumbnailJob
                 Detail: JsonSerializer.Serialize(new { i.CacheId, Status = i.Status.ToString(), i.FoundInFreeSpace, HasPicture = i.HasImage, i.Dates?.Confidence }),
                 Confidence: i.Evidence == EvidenceLevel.Opened ? Confidence.Ran : Confidence.Existed)));
 
-        var version = typeof(ThumbnailJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "dev";
+        var version = typeof(ThumbnailJob).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
         var meta = new ReportMeta(Environment.MachineName, when, version, sources.Select(s => s.User).ToList(), options.AllUsers);
         var report = GalleryReport.WriteFile(scan, meta, reportFolder);
         return new ThumbnailJobResult(report, folder.Path, scan, folder.Warnings);

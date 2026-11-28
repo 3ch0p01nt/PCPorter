@@ -65,3 +65,8 @@
 - A "stops within 2 s of Cancel" test started its stopwatch before the work began, so shell start-up under the full
   parallel test run (2.6 s) failed it. Rule: in latency tests, record the moment the trigger fires (token.Register)
   and assert on the time after it; and never trust a sub-agent's "ALL PASSED": rerun it.
+
+## PowerShell array literals and + (2026-11-27)
+- In `@('a' + "b", 'c')` the comma binds before `+`, so string concatenation inside an array literal silently builds
+  the wrong list. It mangled three template edits during the gap-closure work. Rule: build strings first (or wrap each
+  element in parentheses), and never edit templates through PowerShell string building; use Edit/Write.

@@ -45,15 +45,17 @@ public static class ThumbsCommand
                 if (notAdmin) options = options with { ExtraNotes = [.. options.ExtraNotes ?? [], HistorySetup.NotAdminNote] };
                 var r = ThumbnailJob.Run(parse.GetValue(outOpt)!.FullName, progress: progress, options: options, ct: cancel.Token);
                 var items = r.Scan.Items;
+                var s = r.Scan.Summary;   // original-file counts are for thumbnails only (restore-point copies merged)
                 var summary = new
                 {
                     report = r.ReportPath, caseFolder = r.CaseFolder,
-                    thumbnails = items.Count(i => i.Kind == "thumbnail"),
-                    withoutPicture = items.Count(i => !i.HasImage),
-                    deletedOriginals = items.Count(i => i.Status == OriginalStatus.Deleted),
-                    unreachable = items.Count(i => i.Status == OriginalStatus.Unreachable),
-                    web = items.Count(i => i.Kind == "web"), screenshots = items.Count(i => i.Kind == "screenshot"),
-                    opened = items.Count(i => i.Kind == "opened"), icons = items.Count(i => i.Kind == "icon"),
+                    thumbnails = s.Thumbnails,
+                    withoutPicture = s.WithoutPicture,
+                    deletedOriginals = s.DeletedOriginals,
+                    folderGone = s.FolderGone,
+                    unreachable = s.Unreachable,
+                    onlyInRestorePoints = s.OnlyInRestorePoints,
+                    web = s.Web, screenshots = s.Screenshots, opened = s.Opened, icons = s.Icons,
                     warnings = r.Scan.Warnings.Count + r.FolderWarnings.Count,
                 };
                 var code = summary.warnings > 0 ? ExitCodes.Partial : ExitCodes.Ok;

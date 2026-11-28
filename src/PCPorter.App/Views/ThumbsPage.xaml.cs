@@ -73,9 +73,13 @@ public partial class ThumbsPage : Page
             var r = await RunningJobs.Instance.Track(cts, Task.Run(() => ThumbnailJob.Run(target, progress: progress,
                 options: GalleryJobFactory.Options(settings, _elevated, progress), ct: cts.Token)));
             _reportPath = r.ReportPath; _caseFolder = r.CaseFolder;
-            var items = r.Scan.Items;
-            var msg = $"{items.Count(i => i.Kind == "thumbnail"):N0} thumbnails ({items.Count(i => i.Status == OriginalStatus.Deleted):N0} with deleted originals), " +
-                      $"{items.Count(i => i.Kind == "web"):N0} web images, {items.Count(i => i.Kind == "screenshot"):N0} screenshots, {items.Count(i => i.Kind == "opened"):N0} opened files.";
+            var s = r.Scan.Summary;   // original-file counts are for thumbnails only (restore-point copies are merged)
+            var originals = s.FolderGone > 0
+                ? $"{s.DeletedOriginals:N0} with deleted originals, {s.FolderGone:N0} whose folder is gone"
+                : $"{s.DeletedOriginals:N0} with deleted originals";
+            var msg = $"{s.Thumbnails:N0} thumbnails ({originals}), " +
+                      $"{s.Web:N0} web images, {s.Screenshots:N0} screenshots, {s.Opened:N0} opened files." +
+                      (s.OnlyInRestorePoints > 0 ? $" {s.OnlyInRestorePoints:N0} thumbnails were found only in restore points." : "");
             var gaps = r.Scan.Warnings.Count;   // parts not read; the folder warnings are shown as they are, below
             var warnings = gaps + r.FolderWarnings.Count;
             var message = msg + (gaps > 0 ? $" {gaps} part{(gaps == 1 ? "" : "s")} could not be read; see the notes in the report." : "");
@@ -86,7 +90,8 @@ public partial class ThumbsPage : Page
         }
         catch (OperationCanceledException)
         {
-            Show("Cancelled", "Nothing was changed on this PC. A partly written case folder may remain.", InfoBarSeverity.Informational);
+            // The job removes its case folder (and the pictures it had copied) when it stops before the report.
+            Show("Cancelled", "Nothing was changed on this PC, and the pictures copied so far were removed again.", InfoBarSeverity.Informational);
             RememberRun(RunOutcome.Stopped, "Stopped before the gallery was written.");
         }
         catch (Exception ex)
