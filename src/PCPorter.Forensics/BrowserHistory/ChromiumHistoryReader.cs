@@ -37,17 +37,20 @@ public static class ChromiumHistoryReader
         List<Visit> visits;
         List<Search> searches;
         List<Download> downloads;
+        HashSet<string>? liveKeys = null;
         SqliteConnection? conn = null;
         try
         {
             conn = snap.Open();
             var urlSearches = new List<Search>();
-            visits = ReadVisits(conn, profile, urlSearches, ct);
+            var keys = new List<string>();
+            visits = ReadVisits(conn, profile, urlSearches, ct, keys);
             searches = MergeSearches(ReadKeywordSearches(conn, profile, notes), urlSearches);
             downloads = ReadDownloads(conn, profile, stillOnDisk, notes, ct);
             WarnInconsistent(profile, snap, warnings);
             var live = conn;
             visits.AddRange(Carve(profile, snap, notes, warnings, () => SqliteCarver.Chromium(profile, snap.RawMain, snap.RawWal, live, DateTimeOffset.UtcNow, ct)));
+            liveKeys = [.. keys];
         }
         catch (SqliteException e) when (IsDamaged(e))
         {
@@ -59,15 +62,19 @@ public static class ChromiumHistoryReader
         var bookmarks = Part(profile, "bookmarks", warnings, () => ChromiumBookmarks.Read(profile));
         var tabs = Part(profile, "open and recently closed tabs", warnings, () => ChromiumSessions.Read(profile, notes));
         var forms = Part(profile, "saved form entries", warnings, () => ChromiumWebData.Read(profile, workFolder, notes, ct));
-        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings };
+        return new ProfileHistory(visits, searches, downloads, bookmarks, tabs, forms, notes) { Warnings = warnings, VisitKeys = liveKeys };
     }
 
-    /// <summary>Only the visits of a profile's History database (for older copies, e.g. in restore points).</summary>
-    public static List<Visit> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
+    /// <summary>
+    /// Only the visits of a profile's History database (for older copies, e.g. in restore points), each with its
+    /// <see cref="ProfileHistory.VisitKey"/>. Nothing is carved, so the raw bytes are not kept.
+    /// </summary>
+    internal static List<(Visit Visit, string Key)> ReadVisitsOnly(BrowserProfile profile, string workFolder, CancellationToken ct = default)
     {
-        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder);
+        using var snap = DbSnapshot.Take(Path.Combine(profile.Folder, "History"), workFolder, keepRaw: false);
         using var conn = snap.Open();
-        return ReadVisits(conn, profile, [], ct);
+        var keys = new List<string>();
+        return ReadVisits(conn, profile, [], ct, keys).Zip(keys).ToList();
     }
 
     /// <summary>Reads one optional part of a profile; if it fails, the rest of the profile is still shown.</summary>
@@ -136,7 +143,8 @@ public static class ChromiumHistoryReader
                      $"in {snap.CopiesTaken} tries ({snap.CopyProblem}); the browser was probably writing to it. Some visits may be missing.");
     }
 
-    static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct)
+    /// <param name="keys">Filled with each visit's key (same order as the visits), from the address before masking.</param>
+    static List<Visit> ReadVisits(SqliteConnection conn, BrowserProfile profile, List<Search> urlSearches, CancellationToken ct, List<string> keys)
     {
         var list = new List<Visit>();
         using var cmd = conn.CreateCommand();
@@ -152,6 +160,7 @@ public static class ChromiumHistoryReader
             var micros = r.IsDBNull(4) ? 0 : r.GetInt64(4);
             list.Add(new Visit(profile, Redactor.Redact(raw), string.IsNullOrEmpty(title) ? null : Redactor.Redact(title),
                 when, how, Math.Max(0, micros / 1_000_000)));
+            keys.Add(ProfileHistory.VisitKey(raw, when));
             if (SearchTerms.FromUrl(raw) is { } s) urlSearches.Add(new Search(profile, Redactor.Redact(s.Terms), s.Engine, when));
         }
         return list;

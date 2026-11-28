@@ -54,9 +54,12 @@ public static class HistoryJob
         var users = Users(source, options, notes);
         Func<string, bool?> onDisk = path => StillOnDisk(source, path);
 
+        var liveKeys = new Dictionary<BrowserProfile, IReadOnlySet<string>?>();     // per profile: what its live history lists (null: unread)
+
         void Absorb(BrowserProfile profile, ProfileHistory h, string retention)
         {
             profiles.Add(profile);
+            if (profile.Family != BrowserFamily.WebCache) liveKeys[profile] = h.VisitKeys;
             visits.AddRange(h.Visits); searches.AddRange(h.Searches); downloads.AddRange(h.Downloads);
             bookmarks.AddRange(h.Bookmarks); tabs.AddRange(h.Tabs); forms.AddRange(h.Forms); notes.AddRange(h.Notes);
             warnings.AddRange(h.Warnings);
@@ -90,6 +93,7 @@ public static class HistoryJob
                         catch (Exception ex) when (ex is not OperationCanceledException)
                         {
                             profiles.Add(profile);
+                            liveKeys[profile] = null;
                             warnings.Add($"{profile.Browser} ({profile.Name}) for {user.UserName} could not be read: {FirstLine(ex.Message)}");
                             coverage.Add(new ProfileCoverage(profile, 0, null, null, "Could not be read; see the processing notes."));
                         }
@@ -98,11 +102,16 @@ public static class HistoryJob
                 if (webCaches.Count > 0)
                     ReadWebCaches(source, options, webCaches, work, onDisk, notes, progress, ct, (p, h) => Absorb(p, h, WebCacheRetention));
 
-                if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && profiles.Count > 0)
+                if (RestorePointRoots(source, options, notes) is { Count: > 0 } roots && users.Count > 0)
                 {
                     progress?.Report($"Looking for older history in {roots.Count} restore point(s)");
-                    var rp = RestorePointHistory.Read(profiles, visits, roots, work, ct);
+                    var rp = RestorePointHistory.Read(users.Select(u => new RestorePointUser(u.UserName, u.ProfilePath!)).ToList(), liveKeys, roots, work, ct);
                     visits.AddRange(rp.Visits); notes.AddRange(rp.Notes); warnings.AddRange(rp.Warnings);
+                    foreach (var p in rp.Profiles)
+                    {
+                        profiles.Add(p);
+                        coverage.Add(new ProfileCoverage(p, 0, null, null, "No longer on this PC: found only in restore points."));
+                    }
                 }
             }
 
@@ -275,7 +284,7 @@ public static class HistoryJob
     /// <summary>The counts the CLI prints (and --json emits).</summary>
     public static HistorySummary Summarize(HistoryJobResult r) => new(
         r.ReportPath, r.CaseFolder, r.Scan.Profiles.Count, r.Scan.Visits.Count, r.Scan.Searches.Count, r.Scan.Downloads.Count,
-        r.Scan.Visits.Count(v => v.Origin is Origin.Carved or Origin.RestorePoint), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
+        r.Scan.Visits.Count(v => v.Origin is Origin.Carved or Origin.RestorePoint or Origin.RestorePointCopy), r.Scan.Notes.Count, r.Scan.Warnings.Count + r.FolderWarnings.Count,
         r.Scan.Bookmarks.Count, r.Scan.Tabs.Count, r.Scan.Forms.Count);
 
     /// <summary>0 when everything was read, 1 (partial) when anything was skipped with a warning.</summary>

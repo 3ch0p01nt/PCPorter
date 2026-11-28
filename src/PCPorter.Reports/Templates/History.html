@@ -176,6 +176,9 @@
         <li>"Recovered" rows come from leftover data inside the browser's files (free space, or earlier versions of pages kept in the
           write-ahead log; changes the browser had not finished saving are skipped) or from older copies in restore points; they are marked
           in the Origin column. A recovered row may have been deleted, or be an older copy of a visit: it is not proof of a deletion.</li>
+        <li>"Recovered (restore point)" visits are in a restore point's copy of a profile but not in that profile's current history.
+          "Restore point copy" visits come from a profile whose current history could not be read, or that is no longer on the PC, so
+          they could not be compared and may still be in the browser's history.</li>
         <li>"From a damaged copy" rows come from a history file that could not be opened (damaged, or changing while it was copied); they
           were read from its raw bytes and are mostly visits the browser still lists.</li>
       </ul>
@@ -204,8 +207,9 @@
   const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const howText = { Link: "Clicked a link", Typed: "Typed or searched", Bookmark: "From a bookmark", Redirect: "Passed through (redirect)", Reload: "Reloaded",
                     Generated: "Address bar suggestion", FormSubmit: "Sent a form", Other: "Other" };
-  const originText = { Live: "Browser history", Carved: "Recovered from leftover data", RestorePoint: "Recovered (restore point)", DamagedCopy: "From a damaged copy" };
-  const isRecovered = v => ORG[v[6]] === "Carved" || ORG[v[6]] === "RestorePoint";
+  const originText = { Live: "Browser history", Carved: "Recovered from leftover data", RestorePoint: "Recovered (restore point)", DamagedCopy: "From a damaged copy",
+                       RestorePointCopy: "Restore point copy" };
+  const isRecovered = v => ORG[v[6]] === "Carved" || ORG[v[6]] === "RestorePoint" || ORG[v[6]] === "RestorePointCopy";
   const stateText = { InProgress: "In progress", Complete: "Complete", Cancelled: "Cancelled", Interrupted: "Interrupted", Unknown: "Unknown" };
   const prof = i => P[i] || { user: "?", browser: "?", name: "?" };
   const profText = i => `${prof(i).browser} - ${prof(i).name}`;
@@ -283,7 +287,7 @@
   // Recovered history: per profile counts and the recovered visits on their own
   const recoveredVisits = visits.filter(isRecovered);
   const perProfile = new Map();
-  for (const v of recoveredVisits) { const c = perProfile.get(v[0]) || { Carved: 0, RestorePoint: 0 }; c[ORG[v[6]]] = (c[ORG[v[6]]] || 0) + 1; perProfile.set(v[0], c); }
+  for (const v of recoveredVisits) { const c = perProfile.get(v[0]) || { Carved: 0, RestorePoint: 0 }; const k = ORG[v[6]] === "Carved" ? "Carved" : "RestorePoint"; c[k]++; perProfile.set(v[0], c); }
   const recBody = $("recovered-summary").tBodies[0];
   if (!perProfile.size) recBody.append(el("tr", {}, [el("td", { colSpan: 5, className: "muted", textContent: "Nothing was recovered: no leftover visits were found in the history files" + (data.notes.some(n => /restore point/i.test(n)) ? " (see the notes about restore points)." : " or restore points.") })]));
   [...perProfile].sort((a, b) => coll.compare(profText(a[0]), profText(b[0]))).forEach(([p, c]) => recBody.append(el("tr", {},

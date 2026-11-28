@@ -261,7 +261,8 @@ public sealed class HistoryJobTests : IDisposable
         var r = HistoryJob.Run(_out, source, new HistoryJobOptions(RestorePointRoots: [root]), now: Now);
 
         var old = Assert.Single(r.Scan.Visits, v => v.Origin == Origin.RestorePoint);
-        Assert.Equal(("https://old.example/", T0.AddDays(-50), "restore point 2026-01-20"), (old.Url, old.When, old.OriginNote));
+        Assert.Equal(("https://old.example/", T0.AddDays(-50)), (old.Url, old.When));
+        Assert.Equal($"restore point {TimeZoneInfo.ConvertTime(root.Created, TimeZoneInfo.Local):yyyy-MM-dd HH:mm}, no longer in the browser's history", old.OriginNote);
         Assert.Equal(2, r.Scan.Visits.Count);
         Assert.Equal(1, r.Scan.Coverage.Single().Visits);
         Assert.Equal(1, HistoryJob.Summarize(r).Recovered);

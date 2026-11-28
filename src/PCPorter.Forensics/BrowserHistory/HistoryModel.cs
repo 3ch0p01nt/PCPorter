@@ -5,9 +5,11 @@ public enum VisitHow { Link, Typed, Bookmark, Redirect, Reload, Generated, FormS
 
 /// <summary>
 /// Where a row came from: the live database (including its write-ahead log), leftover data inside the file (carved),
-/// a restore point, or the raw bytes of a copy SQLite could not open (DamagedCopy: mostly rows the browser still lists).
+/// a restore point (a visit the live history no longer lists), the raw bytes of a copy SQLite could not open
+/// (DamagedCopy: mostly rows the browser still lists), or a restore point's copy of a profile that could not be
+/// compared with the live history (RestorePointCopy: not read live, or no longer on the PC).
 /// </summary>
-public enum Origin { Live, Carved, RestorePoint, DamagedCopy }
+public enum Origin { Live, Carved, RestorePoint, DamagedCopy, RestorePointCopy }
 
 public enum DownloadState { InProgress, Complete, Cancelled, Interrupted, Unknown }
 
@@ -42,6 +44,19 @@ public sealed record ProfileHistory(
 
     /// <summary>Parts of the profile that could not be read (the rest was).</summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>
+    /// <see cref="VisitKey"/> of every visit in the browser's own history list, or null when that list could not be read
+    /// (then nothing can be said to be "no longer listed"). Memory only; never written anywhere.
+    /// </summary>
+    public IReadOnlySet<string>? VisitKeys { get; init; }
+
+    /// <summary>
+    /// A visit's identity for comparing copies of one profile: a hash of the address BEFORE masking (two addresses
+    /// that differ only in a masked secret stay different, and the secret is not kept) and the time to the second.
+    /// </summary>
+    public static string VisitKey(string rawUrl, DateTimeOffset when) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawUrl)), 0, 16) + "|" + when.ToUnixTimeSeconds();
 }
 
 /// <summary>Everything found for a web history report.</summary>
