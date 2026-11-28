@@ -67,7 +67,8 @@ Optional: track this PC over time (baseline.ps1, for the developer)
 
 Where things go
    Results:  <your folder>\PCPorter\<PC name>_<date>\  (HealthReport.html, Thumbnails.html, History.html, case.db)
-             These folders can only be opened by you and administrators.
+             These folders can only be opened by you and administrators. On the new PC, use
+             "Open results from another PC" on the Home page to open them there.
    Logs:     C:\ProgramData\PCPorter\logs
 
 Not built yet: Backup/restore ("Move to my new PC"), timeline and passwords reports.

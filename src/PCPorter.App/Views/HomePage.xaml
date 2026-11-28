@@ -3,6 +3,7 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       Title="Home">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
   <StackPanel Margin="32">
     <TextBlock Text="What would you like to do?" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,24" />
     <UniformGrid Columns="3">
@@ -29,5 +30,26 @@
         </StackPanel>
       </ui:CardAction>
     </UniformGrid>
+
+    <ui:Card Margin="0,24,0,0" AutomationProperties.Name="Open results from another PC">
+      <StackPanel>
+        <TextBlock Text="Open results from another PC" FontSize="20" FontWeight="SemiBold" />
+        <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0"
+                   Text="Results that PCPorter saved on your old PC can only be opened by that PC's account. Connect the backup drive, find them here, and PCPorter lets you open them on this PC." />
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+          <ui:Button x:Name="FindCases" Content="Look for results" Icon="{ui:SymbolIcon Search24}" Click="FindCases_Click"
+                     AutomationProperties.Name="Look for results on the connected drives" />
+          <ui:Button Margin="8,0,0,0" Content="Look in a folder..." Click="BrowseCases_Click"
+                     AutomationProperties.Name="Look for results in a folder" />
+        </StackPanel>
+        <ListBox x:Name="Cases" Margin="0,12,0,0" MaxHeight="220" Visibility="Collapsed" SelectionChanged="Cases_SelectionChanged"
+                 AutomationProperties.Name="Results found" />
+        <ui:Button x:Name="OpenCase" Margin="0,8,0,0" Appearance="Primary" Content="Open these results" Icon="{ui:SymbolIcon FolderOpen24}"
+                   Visibility="Collapsed" IsEnabled="False" Click="OpenCase_Click" />
+        <TextBlock x:Name="CasesStatus" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"
+                   AutomationProperties.Name="Results search status" />
+      </StackPanel>
+    </ui:Card>
   </StackPanel>
+  </ScrollViewer>
 </Page>
