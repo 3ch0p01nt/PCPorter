@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using PCPorter.App.Infrastructure;
@@ -187,15 +185,13 @@ public partial class HistoryPage : Page
         StartButton.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
         Busy.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        LiveStatus.FocusForJob(busy, CancelButton, OpenReport, StartButton);
     }
 
-    /// <summary>Updates the status line and tells Narrator (LiveSetting alone is not announced for TextBlock changes).</summary>
-    void Announce(string text)
-    {
-        Status.Text = text;
-        (UIElementAutomationPeer.FromElement(Status) ?? UIElementAutomationPeer.CreatePeerForElement(Status))
-            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
+    LiveStatus? _status;
+
+    /// <summary>Updates the status line and tells Narrator (see <see cref="LiveStatus"/>).</summary>
+    void Announce(string text) => (_status ??= new LiveStatus(Status)).Set(text);
 
     void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); CancelButton.IsEnabled = false; Announce("Stopping after the current step..."); }
 

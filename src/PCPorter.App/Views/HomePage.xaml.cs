@@ -1,7 +1,5 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using PCPorter.App.Infrastructure;
@@ -106,11 +104,8 @@ public partial class HomePage : Page
         Announce(CaseLinks.OpenCaseFolder(c.Path) ? "Opened the results in File Explorer." : "The results folder could not be opened.");
     }
 
-    /// <summary>Updates the status line and tells Narrator (LiveSetting alone is not announced for TextBlock changes).</summary>
-    void Announce(string text)
-    {
-        CasesStatus.Text = text;
-        (UIElementAutomationPeer.FromElement(CasesStatus) ?? UIElementAutomationPeer.CreatePeerForElement(CasesStatus))
-            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
+    LiveStatus? _status;
+
+    /// <summary>Updates the status line and tells Narrator (see <see cref="LiveStatus"/>).</summary>
+    void Announce(string text) => (_status ??= new LiveStatus(CasesStatus)).Set(text);
 }

@@ -3,8 +3,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -195,15 +193,13 @@ public partial class ScanPage : Page
         Inputs.IsEnabled = !busy;
         StartButton.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
+        LiveStatus.FocusForJob(busy, CancelButton, OpenReport, StartButton);
     }
 
-    /// <summary>Updates the status line and tells Narrator (LiveSetting alone is not announced for TextBlock changes).</summary>
-    void Announce(string text)
-    {
-        Step.Text = text;
-        (UIElementAutomationPeer.FromElement(Step) ?? UIElementAutomationPeer.CreatePeerForElement(Step))
-            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
+    LiveStatus? _status;
+
+    /// <summary>Updates the status line and tells Narrator (see <see cref="LiveStatus"/>).</summary>
+    void Announce(string text) => (_status ??= new LiveStatus(Step)).Set(text);
 
     Card AddCard(string title) { var c = new Card(title); _cards.Add(c); return c; }
 

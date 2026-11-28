@@ -38,7 +38,7 @@
         <ui:Button x:Name="CancelButton" Margin="8,0,0,0" Content="Cancel" IsEnabled="False" Click="Cancel_Click" />
       </StackPanel>
 
-      <ProgressBar x:Name="Busy" IsIndeterminate="True" Margin="0,16,0,0" Visibility="Collapsed" />
+      <ProgressBar x:Name="Busy" IsIndeterminate="True" Margin="0,16,0,0" Visibility="Collapsed" AutomationProperties.Name="Working" />
       <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
 
       <ui:InfoBar x:Name="Result" Margin="0,16,0,0" IsOpen="False" IsClosable="False" />
