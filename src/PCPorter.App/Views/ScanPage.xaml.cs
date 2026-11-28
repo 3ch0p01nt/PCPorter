@@ -44,7 +44,8 @@ public partial class ScanPage : Page
     {
         InitializeComponent();
         Cards.ItemsSource = _cards;
-        OutFolder.Text = string.IsNullOrWhiteSpace(_memory.SaveFolder) ? WindowsDrives.SuggestedSaveFolder() : _memory.SaveFolder;
+        if (string.IsNullOrWhiteSpace(_memory.SaveFolder)) _ = WindowsDrives.SuggestSaveFolderAsync(() => OutFolder.Text, s => OutFolder.Text = s);
+        else OutFolder.Text = _memory.SaveFolder;
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
         ShowLastRun();
         Loaded += async (_, _) =>
@@ -61,11 +62,11 @@ public partial class ScanPage : Page
     /// <summary>The last finished check, while its report still exists (otherwise it is forgotten).</summary>
     void ShowLastRun()
     {
-        if (Remembered.Pages.RecallLastRun(MemoryKey) is not { } last) return;
+        if (Remembered.LastRunOf(MemoryKey) is not { } last) return;
         _report = last.ReportPath; _case = last.CaseFolder;
         Announce(PageMemoryStore.Describe("Last check", last));
         OpenReport.Visibility = Visibility.Visible;
-        OpenFolder.Visibility = _case is not null && Directory.Exists(_case) ? Visibility.Visible : Visibility.Collapsed;
+        OpenFolder.Visibility = CaseLinks.IsCaseFolder(_case) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void RememberRun(RunOutcome outcome, string summary) =>
@@ -78,7 +79,7 @@ public partial class ScanPage : Page
         var candidates = await Task.Run(WindowsDrives.Find);
         Drives.ItemsSource = candidates;
         Drives.SelectedItem = candidates.FirstOrDefault(c => c.Usable);
-        DriveHint.Text = WindowsDrives.Hint(candidates);
+        DriveHint.Text = WindowsDrives.Hint(candidates, _elevated);
     }
 
     async void RefreshDrives_Click(object sender, RoutedEventArgs e) => await RefreshDrives();
@@ -123,16 +124,18 @@ public partial class ScanPage : Page
         });
         try
         {
-            var r = await Task.Run(() => ScanSetup.Run(outRoot, new ScanJobOptions(offline, false, _elevated), progress, _cts.Token));
+            var cts = _cts;
+            var r = await RunningJobs.Instance.Track(cts, Task.Run(() => ScanSetup.Run(outRoot, new ScanJobOptions(offline, false, _elevated), progress, cts.Token)));
             _report = r.ReportPath; _case = r.CaseFolder;
             foreach (var run in r.Run.Runs)
                 (_cards.FirstOrDefault(c => c.Title == run.Collector) ?? AddCard(run.Collector)).State = Describe(run.Status, run.Items);
 
             var f = ScanSetup.CountFindings(r);
+            var folderWarnings = FolderWarnings.Of(r);
             if (r.Run.Cancelled)
             {
                 Announce("Scan stopped.");
-                Show("Stopped", "The scan was stopped before the end. The report shows what was checked so far. Nothing on the PC was changed.", InfoBarSeverity.Warning);
+                Show("Stopped", FolderWarnings.Append("The scan was stopped before the end. The report shows what was checked so far. Nothing on the PC was changed.", folderWarnings), InfoBarSeverity.Warning);
                 RememberRun(RunOutcome.Stopped, "Stopped before the end; the report shows what was checked so far.");
             }
             else
@@ -143,29 +146,28 @@ public partial class ScanPage : Page
                 var detail = gaps ? "Some parts could not be checked; the report says which and why." : "All parts were checked.";
                 Announce(finished);
                 Banner.IsOpen = f.WorthALook > 0;
-                Show("Done", detail, gaps ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+                Show("Done", FolderWarnings.Append(detail, folderWarnings),
+                    gaps || folderWarnings.Count > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
                 RememberRun(gaps ? RunOutcome.Partial : RunOutcome.Ok, $"{finished} {detail}");
             }
-            OpenReport.Visibility = _report is null ? Visibility.Collapsed : Visibility.Visible;
-            OpenFolder.Visibility = Visibility.Visible;
+            OpenReport.Visibility = CaseLinks.IsReport(_report) ? Visibility.Visible : Visibility.Collapsed;
+            OpenFolder.Visibility = CaseLinks.IsCaseFolder(_case) ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (OperationCanceledException)
         {
             Announce("Scan stopped."); Show("Stopped", "Nothing was changed on the PC.", InfoBarSeverity.Warning);
             RememberRun(RunOutcome.Stopped, "Stopped before the report was written.");
         }
-        catch (Exception ex) when (ex is CaseLocationRejectedException or InvalidDataException or InvalidOperationException) { Show("Can't start", Redactor.Redact(ex.Message), InfoBarSeverity.Warning); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Warning(ex, "scan failed");
-            Show("Couldn't save the results", Redactor.Redact(ex.Message), InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The results could not be saved.");
-        }
         catch (Exception ex)
         {
-            Log.Error(ex, "scan crashed");
-            Show("Something went wrong", $"The scan stopped unexpectedly. Details are in the log folder: {Infrastructure.Logging.Folder}", InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The scan stopped unexpectedly.");
+            var err = JobErrors.Describe(ex, "the results", Infrastructure.Logging.Folder);
+            if (err.Kind == JobErrorKind.CantStart) Show(err.Title, err.Message, InfoBarSeverity.Warning);
+            else
+            {
+                Log.Error(ex, "scan failed");
+                Show(err.Title, err.Message, InfoBarSeverity.Error);
+                RememberRun(RunOutcome.Failed, $"{err.Title}. {err.Message}");
+            }
         }
         finally { _timer.Stop(); SetBusy(false); _cts?.Dispose(); _cts = null; }
     }
@@ -198,8 +200,8 @@ public partial class ScanPage : Page
     Card AddCard(string title) { var c = new Card(title); _cards.Add(c); return c; }
 
     void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); CancelButton.IsEnabled = false; Announce("Stopping after the current step..."); }
-    void OpenReport_Click(object sender, RoutedEventArgs e) { if (_report is not null) Process.Start(new ProcessStartInfo(_report) { UseShellExecute = true }); }
-    void OpenFolder_Click(object sender, RoutedEventArgs e) { if (_case is not null) Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), _case); }
+    void OpenReport_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenReport(_report);
+    void OpenFolder_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenCaseFolder(_case);
 
     void Show(string title, string message, InfoBarSeverity severity)
     {

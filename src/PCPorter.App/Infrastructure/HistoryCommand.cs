@@ -33,44 +33,24 @@ public static class HistoryCommand
         cmd.SetAction(parse =>
         {
             var json = parse.GetValue(jsonOpt);
-            using var cts = new CancellationTokenSource();
-            ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; cts.Cancel(); Console.Error.WriteLine("Stopping after the current step..."); };
-            Console.CancelKeyPress += onCancel;
+            using var cancel = new CliCancel();
             try
             {
                 var request = new HistoryRequest(parse.GetValue(outOpt)!.FullName, parse.GetValue(offline)?.FullName,
                     parse.GetValue(allUsers), !parse.GetValue(noRestore));
-                var r = HistorySetup.Run(request, elevated, new ConsoleProgress(!json), ct: cts.Token);
+                var r = HistorySetup.Run(request, elevated, new ConsoleProgress(!json), ct: cancel.Token);
                 var s = HistoryJob.Summarize(r);
                 var code = HistoryJob.ExitCode(r);
-                Console.WriteLine(json ? JsonSerializer.Serialize(new { summary = s, exitCode = code }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) :
+                CliOutput.Done(json, s,
                     $"Report: {s.Report}\n{s.Profiles} browser profiles: {s.Visits} visits, {s.Searches} searches, {s.Downloads} downloads, " +
-                    $"{s.Bookmarks} bookmarks, {s.Tabs} tabs, {s.Forms} form entries; warnings {s.Warnings}");
-                if (!json) foreach (var w in r.Scan.Warnings.Concat(r.FolderWarnings)) Console.Error.WriteLine("Warning: " + Redactor.Redact(w));
+                    $"{s.Bookmarks} bookmarks, {s.Tabs} tabs, {s.Forms} form entries; warnings {s.Warnings}",
+                    r.FolderWarnings, code, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                if (!json) foreach (var w in r.Scan.Warnings) Console.Error.WriteLine("Warning: " + Redactor.Redact(w));
                 Log.Information("history: {Profiles} profiles, {Visits} visits, {Warnings} warnings, exit {Code}", s.Profiles, s.Visits, s.Warnings, code);
                 return code;
             }
-            catch (OperationCanceledException) { return Fail(json, "Cancelled.", ExitCodes.Cancelled); }
-            catch (CaseLocationRejectedException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidDataException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidOperationException ex) { return Fail(json, ex.Message, ExitCodes.BadArguments); }
-            catch (UnauthorizedAccessException ex) { return Fail(json, "Access was denied: " + ex.Message, ExitCodes.Failed); }
-            catch (IOException ex) { return Fail(json, "Could not write the case: " + ex.Message, ExitCodes.Failed); }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "history failed");
-                return Fail(json, $"Something went wrong; details are in {Logging.Folder}.", ExitCodes.Failed);
-            }
-            finally { Console.CancelKeyPress -= onCancel; }
+            catch (Exception ex) { return CliOutput.Fail(json, ex, "history"); }
         });
         return cmd;
-    }
-
-    static int Fail(bool json, string message, int code)
-    {
-        message = Redactor.Redact(message);
-        if (json) Console.WriteLine(JsonSerializer.Serialize(new { error = message, exitCode = code }));
-        else Console.Error.WriteLine(message);
-        return code;
     }
 }

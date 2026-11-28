@@ -14,8 +14,9 @@ namespace PCPorter.App.Infrastructure;
 /// <c>pcporter scan --out &lt;folder&gt; [--offline D:\] [--json] [--quiet] [--fail-on high|unusual] [--include-defender-prefs]</c>:
 /// health &amp; security scan of this PC or of a dead PC's drive.
 /// Exit codes: 0 ok, 1 partial, 2 failed, 3 bad arguments, 4 not elevated, 5 findings at the --fail-on level, 6 cancelled (Ctrl+C).
-/// The app is a Windows (GUI) program: it attaches to the calling console, so in cmd use <c>start /wait pcporter scan ...</c>
-/// (PowerShell waits by itself when you pipe it, e.g. <c>pcporter scan --out E:\ --json | Out-String</c>) to read the exit code.
+/// The app is a Windows (GUI) program that attaches to the calling console. Read the exit code from PowerShell, which
+/// waits for it when piped: <c>&amp; pcporter scan --out E:\ --json | Out-String; $LASTEXITCODE</c>. In cmd,
+/// <c>start /wait</c> always reports 0 for a GUI program, so do not rely on it.
 /// </summary>
 public static class ScanCommand
 {
@@ -37,14 +38,12 @@ public static class ScanCommand
             if (!elevated && parse.GetValue(offline) is null)
                 return Fail(asJson, "Run PCPorter as administrator to scan this PC.", ExitCodes.NotElevated);
 
-            using var cts = new CancellationTokenSource();
-            ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; cts.Cancel(); Console.Error.WriteLine("Stopping after the current step..."); };
-            Console.CancelKeyPress += onCancel;
+            using var cancel = new CliCancel();
             try
             {
                 var r = ScanSetup.Run(parse.GetValue(outOpt)!.FullName,
                     new ScanJobOptions(parse.GetValue(offline)?.FullName, parse.GetValue(defender), elevated),
-                    new ConsoleProgress(!asJson && !parse.GetValue(quiet)), cts.Token);
+                    new ConsoleProgress(!asJson && !parse.GetValue(quiet)), cancel.Token);
                 var f = ScanSetup.CountFindings(r);
                 // Findings win over "partial": an offline scan is always partial (no running Windows to ask about
                 // hardware), and --fail-on must still report what it found.
@@ -54,37 +53,22 @@ public static class ScanCommand
                     : r.Run.AnyFailed || r.Run.AnyPartial ? ExitCodes.Partial : ExitCodes.Ok;
                 var summary = new
                 {
-                    scanId = r.ScanId, casePath = r.CaseFolder, report = r.ReportPath, status = r.Run.Overall,
+                    scanId = r.ScanId, caseFolder = r.CaseFolder, report = r.ReportPath, status = r.Run.Overall,
                     collectors = r.Run.Runs.Select(x => new { name = x.Collector, status = x.Status.ToString(), items = x.Items }),
                     findings = new { worthALook = f.WorthALook, unusual = f.Unusual },
                     warnings = r.Warnings.Count,
                 };
-                Console.WriteLine(asJson ? JsonSerializer.Serialize(new { summary, exitCode = code }) :
+                CliOutput.Done(asJson, summary,
                     $"Report: {r.ReportPath ?? r.CaseFolder}\n{f.WorthALook} worth a look, {f.Unusual} unusual; " +
-                    string.Join(", ", r.Run.Runs.Select(x => $"{x.Collector}: {x.Status} ({x.Items})")));
+                    string.Join(", ", r.Run.Runs.Select(x => $"{x.Collector}: {x.Status} ({x.Items})")),
+                    FolderWarnings.Of(r), code);
                 Log.Information("scan {ScanId}: {Status}, exit {Code}", r.ScanId, summary.status, code);
                 return code;
             }
-            catch (OperationCanceledException) { return Fail(asJson, "Cancelled.", ExitCodes.Cancelled); }
-            catch (CaseLocationRejectedException ex) { return Fail(asJson, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidDataException ex) { return Fail(asJson, ex.Message, ExitCodes.BadArguments); }
-            catch (InvalidOperationException ex) { return Fail(asJson, ex.Message, ExitCodes.BadArguments); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Fail(asJson, ex.Message, ExitCodes.Failed); }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "scan crashed");
-                return Fail(asJson, $"Something went wrong; details are in {Logging.Folder}.", ExitCodes.Failed);
-            }
-            finally { Console.CancelKeyPress -= onCancel; }
+            catch (Exception ex) { return CliOutput.Fail(asJson, ex, "scan"); }
         });
         return cmd;
     }
 
-    static int Fail(bool json, string message, int code)
-    {
-        message = Redactor.Redact(message);
-        if (json) Console.WriteLine(JsonSerializer.Serialize(new { error = message, exitCode = code }));
-        else Console.Error.WriteLine(message);
-        return code;
-    }
+    static int Fail(bool json, string message, int code) => CliOutput.Fail(json, message, code);
 }

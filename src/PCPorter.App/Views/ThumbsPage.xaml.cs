@@ -26,11 +26,12 @@ public partial class ThumbsPage : Page
     {
         InitializeComponent();
         var memory = Remembered.Pages.Get(MemoryKey);
-        OutFolder.Text = string.IsNullOrWhiteSpace(memory.SaveFolder) ? SuggestFolder() : memory.SaveFolder;
+        if (string.IsNullOrWhiteSpace(memory.SaveFolder)) _ = WindowsDrives.SuggestSaveFolderAsync(() => OutFolder.Text, s => OutFolder.Text = s);
+        else OutFolder.Text = memory.SaveFolder;
         Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
         AllUsers.IsEnabled = _elevated;
         if (!_elevated) { AllUsers.IsChecked = false; AllUsers.ToolTip = "Needs PCPorter to run as administrator."; }
-        if (Remembered.Pages.RecallLastRun(MemoryKey) is { } last)
+        if (Remembered.LastRunOf(MemoryKey) is { } last)
         {
             _reportPath = last.ReportPath;
             Status.Text = PageMemoryStore.Describe("Last gallery", last);
@@ -40,13 +41,6 @@ public partial class ThumbsPage : Page
 
     void RememberRun(RunOutcome outcome, string summary) =>
         Remembered.Pages.Update(MemoryKey, m => m with { LastRun = new LastRun(DateTime.Now, outcome, summary, _reportPath, _caseFolder) });
-
-    /// <summary>First removable drive (the backup drive), else a local folder outside any synced location.</summary>
-    static string SuggestFolder()
-    {
-        var removable = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.DriveType == DriveType.Removable);
-        return removable?.RootDirectory.FullName ?? @"C:\PCPorterCases";
-    }
 
     void Browse_Click(object sender, RoutedEventArgs e)
     {
@@ -72,19 +66,21 @@ public partial class ThumbsPage : Page
         Result.IsOpen = false;
         OpenReport.Visibility = Visibility.Collapsed;
         _cts = new CancellationTokenSource();
-        var progress = new Progress<string>(m => Status.Text = m);   // UI thread stays free: the job runs on a worker
+        var progress = new Progress<string>(m => Status.Text = PCPorter.Core.Security.Redactor.Redact(m));   // UI thread stays free: the job runs on a worker
         try
         {
-            var r = await Task.Run(() => ThumbnailJob.Run(target, progress: progress,
-                options: GalleryJobFactory.Options(settings, _elevated, progress), ct: _cts.Token));
+            var cts = _cts;
+            var r = await RunningJobs.Instance.Track(cts, Task.Run(() => ThumbnailJob.Run(target, progress: progress,
+                options: GalleryJobFactory.Options(settings, _elevated, progress), ct: cts.Token)));
             _reportPath = r.ReportPath; _caseFolder = r.CaseFolder;
             var items = r.Scan.Items;
             var msg = $"{items.Count(i => i.Kind == "thumbnail"):N0} thumbnails ({items.Count(i => i.Status == OriginalStatus.Deleted):N0} with deleted originals), " +
                       $"{items.Count(i => i.Kind == "web"):N0} web images, {items.Count(i => i.Kind == "screenshot"):N0} screenshots, {items.Count(i => i.Kind == "opened"):N0} opened files.";
-            var warnings = r.Scan.Warnings.Count + r.FolderWarnings.Count;
-            var message = msg + (warnings > 0 ? $" {warnings} parts could not be read; see the notes in the report." : "");
-            Show("Gallery ready", message, warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
-            OpenReport.Visibility = Visibility.Visible;
+            var gaps = r.Scan.Warnings.Count;   // parts not read; the folder warnings are shown as they are, below
+            var warnings = gaps + r.FolderWarnings.Count;
+            var message = msg + (gaps > 0 ? $" {gaps} part{(gaps == 1 ? "" : "s")} could not be read; see the notes in the report." : "");
+            Show("Gallery ready", FolderWarnings.Append(message, r.FolderWarnings), warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+            OpenReport.Visibility = CaseLinks.IsReport(_reportPath) ? Visibility.Visible : Visibility.Collapsed;
             Status.Text = r.ReportPath;
             RememberRun(warnings > 0 ? RunOutcome.Partial : RunOutcome.Ok, message);
         }
@@ -93,23 +89,23 @@ public partial class ThumbsPage : Page
             Show("Cancelled", "Nothing was changed on this PC. A partly written case folder may remain.", InfoBarSeverity.Informational);
             RememberRun(RunOutcome.Stopped, "Stopped before the gallery was written.");
         }
-        catch (CaseLocationRejectedException ex) { Show("Pick another folder", ex.Message, InfoBarSeverity.Warning); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            Log.Warning(ex, "Gallery job could not write");
-            Show("Could not save the report", ex.Message, InfoBarSeverity.Error);
-            RememberRun(RunOutcome.Failed, "The gallery could not be saved.");
+            var err = JobErrors.Describe(ex, "the gallery", Infrastructure.Logging.Folder);
+            if (err.Kind == JobErrorKind.CantStart) Show(err.Title, err.Message, InfoBarSeverity.Warning);
+            else
+            {
+                Log.Error(ex, "gallery failed");
+                Show(err.Title, err.Message, InfoBarSeverity.Error);
+                RememberRun(RunOutcome.Failed, $"{err.Title}. {err.Message}");
+            }
         }
         finally { SetBusy(false); _cts?.Dispose(); _cts = null; }
     }
 
     void Cancel_Click(object sender, RoutedEventArgs e) { _cts?.Cancel(); Status.Text = "Cancelling..."; }
 
-    void OpenReport_Click(object sender, RoutedEventArgs e)
-    {
-        if (_reportPath is not null && File.Exists(_reportPath))
-            Process.Start(new ProcessStartInfo(_reportPath) { UseShellExecute = true });
-    }
+    void OpenReport_Click(object sender, RoutedEventArgs e) => CaseLinks.OpenReport(_reportPath);
 
     void SetBusy(bool busy)
     {

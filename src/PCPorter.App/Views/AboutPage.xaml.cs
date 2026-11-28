@@ -20,6 +20,6 @@ public partial class AboutPage : Page
     void OpenLogs_Click(object sender, RoutedEventArgs e)
     {
         Directory.CreateDirectory(Logging.Folder);
-        Process.Start("explorer.exe", Logging.Folder);
+        CaseLinks.OpenFolder(Logging.Folder);   // %windir%\explorer.exe by full path, never a lookup in the current folder
     }
 }

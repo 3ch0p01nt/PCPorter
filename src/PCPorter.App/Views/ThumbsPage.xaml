@@ -7,7 +7,7 @@
     <StackPanel Margin="32" MaxWidth="880" HorizontalAlignment="Left">
       <TextBlock Text="Images viewed on this PC" FontSize="28" FontWeight="SemiBold" />
       <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,20"
-                 Text="Builds a private gallery of pictures this PC recorded: File Explorer thumbnails (including ones whose original was deleted), web browser caches, screenshots and recently opened image files. Nothing on this PC is changed." />
+                 Text="Builds a private gallery of pictures this PC recorded: File Explorer thumbnails (including ones whose original was deleted), web browser caches, screenshots and recently opened image files. Nothing on this PC is changed. It reads this PC only: for an old PC's drive, use Health and security or Web history." />
 
       <TextBlock Text="Save the report to" FontWeight="SemiBold" />
       <Grid Margin="0,6,0,4">

@@ -2,23 +2,17 @@ using System.CommandLine;
 
 namespace PCPorter.Core.Cli;
 
-/// <summary>Command-line entry point. Commands are wired to real engines in later phases.</summary>
+/// <summary>Command-line entry point. The working commands (scan, history, thumbs, selftest) are added by the app.</summary>
 public static class CliApp
 {
     /// <param name="extraCommands">Commands implemented in higher layers (Forensics/Reports), added by the app.</param>
     public static int Run(string[] args, bool isElevated, params Command[] extraCommands)
     {
-        var dest = new Option<DirectoryInfo>("--dest") { Description = "Backup destination folder", Required = true };
-        var from = new Option<DirectoryInfo>("--from") { Description = "Existing backup or case folder", Required = true };
-        var quiet = new Option<bool>("--quiet") { Description = "No prompts; log only" };
-
-        var backup = new Command("backup", "Back up this PC") { dest, quiet };
-        backup.SetAction(_ => isElevated ? ExitCodes.Ok : ExitCodes.NotElevated);   // Phase 5 wires the backup engine
-
-        var report = new Command("report", "Generate HTML reports from a backup") { from, quiet };
-        report.SetAction(_ => ExitCodes.Ok);                                          // Phase 3 wires the report engine
-
-        var root = new RootCommand("PCPorter - move your PC and explore its history") { backup, report };
+        var root = new RootCommand("PCPorter - move your PC and explore its history")
+        {
+            NotBuiltYet("backup", "Back up this PC"),
+            NotBuiltYet("report", "Generate HTML reports from a backup"),
+        };
         foreach (var extra in extraCommands) root.Subcommands.Add(extra);
         var parsed = root.Parse(args);
         if (parsed.Errors.Count > 0)
@@ -27,5 +21,20 @@ public static class CliApp
             return ExitCodes.BadArguments;
         }
         return parsed.Invoke();
+    }
+
+    /// <summary>
+    /// A planned command that does nothing yet. Hidden from the help, and if called anyway it says so and fails (exit 2)
+    /// instead of pretending a backup was made. Any arguments are accepted, so old scripts get this message, not a parse error.
+    /// </summary>
+    static Command NotBuiltYet(string name, string description)
+    {
+        var cmd = new Command(name, description) { Hidden = true, TreatUnmatchedTokensAsErrors = false };
+        cmd.SetAction(_ =>
+        {
+            Console.Error.WriteLine($"\"pcporter {name}\" is not built yet. Nothing was done.");
+            return ExitCodes.Failed;
+        });
+        return cmd;
     }
 }

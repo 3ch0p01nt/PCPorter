@@ -11,7 +11,7 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <ui:TitleBar Grid.Row="0" Title="PCPorter  -  running as administrator" />
+    <ui:TitleBar Grid.Row="0" x:Name="AppTitle" Title="PCPorter" />
 
     <!-- NavigationCacheMode="Required": one instance of each page for the whole session, so a page's inputs, results and
          a still-running job survive clicking elsewhere. WPF-UI 4.3.0 caches by page type, and Nav.Navigate(typeof(X))
