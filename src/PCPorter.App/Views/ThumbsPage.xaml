@@ -19,8 +19,13 @@
         <TextBlock Text="Drives found:" VerticalAlignment="Center" />
         <ComboBox x:Name="SaveDrives" Margin="8,0,0,0" MinWidth="320" AutomationProperties.Name="Drives found to save the report on" />
       </StackPanel>
-      <ui:InfoBar x:Name="SystemDriveWarning" Margin="0,2,0,4" IsOpen="False" IsClosable="False" Severity="Warning"
-                  Title="This is the PC's own drive" AutomationProperties.Name="Save folder warning" />
+      <Border x:Name="SystemDriveWarning" Margin="0,2,0,6" Padding="10,8" CornerRadius="4" Visibility="Collapsed"
+              Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
+        <DockPanel>
+          <ui:SymbolIcon Symbol="Warning24" Foreground="{DynamicResource SystemFillColorCautionBrush}" Margin="0,0,8,0" VerticalAlignment="Top" />
+          <TextBlock x:Name="SystemDriveWarningText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+        </DockPanel>
+      </Border>
       <TextBlock x:Name="FolderHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,16"
                  Text="Use the backup drive or a local folder. Cloud-synced folders (OneDrive, Dropbox, Google Drive) are refused because the report contains private pictures." />
 

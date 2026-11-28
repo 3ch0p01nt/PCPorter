@@ -26,7 +26,7 @@ public partial class ThumbsPage : Page
     {
         InitializeComponent();
         var memory = Remembered.Pages.Get(MemoryKey);
-        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, memory.SaveFolder);
+        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, memory.SaveFolder);
         Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
         AllUsers.IsEnabled = _elevated;
         if (!_elevated) { AllUsers.IsChecked = false; AllUsers.ToolTip = "Needs PCPorter to run as administrator."; }

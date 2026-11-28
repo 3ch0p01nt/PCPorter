@@ -165,13 +165,13 @@ public static class WindowsDrives
     /// one fills the box; hidden when none) and the warning shown while the box points at this PC's own drive.
     /// </summary>
     public static async Task AttachSaveFolderAsync(System.Windows.Controls.TextBox box, ComboBox drives, FrameworkElement drivesRow,
-        Wpf.Ui.Controls.InfoBar warning, string? remembered)
+        FrameworkElement warning, TextBlock warningText, string? remembered)
     {
         var system = SystemRoot;
-        warning.Message = SystemDriveWarning;
+        warningText.Text = SystemDriveWarning;
         void Update()
         {
-            warning.IsOpen = IsOnSystemDrive(box.Text, system, FileIdentity.DosDeviceTarget);
+            warning.Visibility = IsOnSystemDrive(box.Text, system, FileIdentity.DosDeviceTarget) ? Visibility.Visible : Visibility.Collapsed;
             var match = (drives.ItemsSource as List<SaveDrive>)?.FirstOrDefault(d => string.Equals(d.Root, box.Text.Trim(), StringComparison.OrdinalIgnoreCase));
             if (!ReferenceEquals(drives.SelectedItem, match)) drives.SelectedItem = match;
         }

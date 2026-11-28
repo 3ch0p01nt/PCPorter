@@ -44,7 +44,7 @@ public partial class ScanPage : Page
     {
         InitializeComponent();
         Cards.ItemsSource = _cards;
-        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, _memory.SaveFolder);
+        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, _memory.SaveFolder);
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
         ShowLastRun();
         Loaded += async (_, _) =>

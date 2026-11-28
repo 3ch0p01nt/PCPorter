@@ -33,7 +33,7 @@ public partial class HistoryPage : Page
     public HistoryPage()
     {
         InitializeComponent();
-        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, _memory.SaveFolder);
+        _ = WindowsDrives.AttachSaveFolderAsync(OutFolder, SaveDrives, SaveDrivesRow, SystemDriveWarning, SystemDriveWarningText, _memory.SaveFolder);
         Remembered.RestoreOptions(_memory, ("allUsers", AllUsers), ("restorePoints", RestorePoints));
         ThisPc.Checked += (_, _) => UpdateOptions();
         OtherDrive.Checked += (_, _) => UpdateOptions();
