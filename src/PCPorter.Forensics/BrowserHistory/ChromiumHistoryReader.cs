@@ -230,7 +230,8 @@ public static class ChromiumHistoryReader
                     3 or 4 => DownloadState.Interrupted,
                     _ => DownloadState.Unknown,
                 };
-                list.Add(new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), target,
+                // The saved-as path is masked like any address (a file name can hold a token); on-disk is checked with the real one.
+                list.Add(new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), Redactor.Redact(target),
                     Timestamps.FromWebKit(Number("start_time")), Number("received_bytes"), state,
                     target.Length == 0 ? null : stillOnDisk?.Invoke(target)));
             }

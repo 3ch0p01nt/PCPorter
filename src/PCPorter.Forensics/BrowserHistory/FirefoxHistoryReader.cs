@@ -217,7 +217,8 @@ public static class FirefoxHistoryReader
             var d = byPlace[place];
             if (d.Target is null) continue;
             var (state, bytes, end) = Metadata(d.Meta);
-            list.Add(new Download(profile, Redactor.Redact(d.Url), null, d.Target, d.Added ?? end, bytes, state, stillOnDisk?.Invoke(d.Target)));
+            // The saved-as path (decoded from its file: address) is masked; on-disk is checked with the real one.
+            list.Add(new Download(profile, Redactor.Redact(d.Url), null, Redactor.Redact(d.Target), d.Added ?? end, bytes, state, stillOnDisk?.Invoke(d.Target)));
         }
         return list.OrderBy(d => d.Started).ToList();
     }

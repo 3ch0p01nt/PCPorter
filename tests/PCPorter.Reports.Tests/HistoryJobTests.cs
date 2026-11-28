@@ -219,6 +219,44 @@ public sealed class HistoryJobTests : IDisposable
     }
 
     [Fact]
+    public void Saved_as_paths_of_downloads_are_masked_everywhere_and_still_checked_on_disk()
+    {
+        const string secret = "Hunter2Secret77";
+        var name = $"api_key={secret}.txt";
+        var bob = Path.Combine(_drive, "Users", "bob");
+        Directory.CreateDirectory(Path.Combine(bob, "Downloads"));
+        File.WriteAllText(Path.Combine(bob, "Downloads", name), "x");
+        ChromeHistory(Path.Combine(bob, @"AppData\Local\Google\Chrome\User Data\Default"), c =>
+        {
+            Sql(c, $"INSERT INTO downloads VALUES (1, 'g', 'C:\\Users\\bob\\Downloads\\{name}', 'C:\\Users\\bob\\Downloads\\{name}', {WebKit(T0)}, 1, 1, 1, '', 'https://example.com/')");
+            Sql(c, "INSERT INTO downloads_url_chains VALUES (1, 0, 'https://example.com/file')");
+        });
+        var fox = Path.Combine(bob, @"AppData\Roaming\Mozilla\Firefox\Profiles\abcd.default-release");
+        FirefoxPlaces(fox);
+        using (var c = new SqliteConnection($"Data Source={Path.Combine(fox, "places.sqlite")};Pooling=False"))
+        {
+            c.Open();
+            Sql(c, "INSERT INTO moz_anno_attributes (id, name) VALUES (1, 'downloads/destinationFileURI')");
+            Sql(c, $"INSERT INTO moz_annos (place_id, anno_attribute_id, content, dateAdded) VALUES (1, 1, 'file:///C:/Users/bob/Downloads/api_key%3D{secret}.txt', {T0.ToUnixTimeMilliseconds() * 1000})");
+        }
+        WebCacheFixture.Create(Path.Combine(bob, WebCacheRel), new WebCacheFixture.Container(2, "iedownload",
+        [
+            new WebCacheFixture.Entry("iedownload:https://ie.example/f", T0,
+                ResponseHeaders: WebCacheFixture.DownloadHeaders("https://ie.example/f", "https://ie.example/", $@"C:\Users\bob\Downloads\{name}")),
+        ]));
+        using var source = new FakeSystemSource(_drive, users: [Bob]);
+
+        var r = HistoryJob.Run(_out, source, new HistoryJobOptions(), now: Now);
+
+        Assert.Equal(3, r.Scan.Downloads.Count);
+        Assert.All(r.Scan.Downloads, d => Assert.DoesNotContain(secret, d.TargetPath));
+        Assert.All(r.Scan.Downloads, d => Assert.StartsWith(@"C:\Users\bob\Downloads\api_key=", d.TargetPath));
+        Assert.All(r.Scan.Downloads, d => Assert.True(d.StillOnDisk));                    // checked with the real path
+        foreach (var file in Directory.EnumerateFiles(r.CaseFolder, "*", SearchOption.AllDirectories))
+            Assert.DoesNotContain(secret, System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(file)));
+    }
+
+    [Fact]
     public void Bookmarks_tabs_and_form_entries_reach_the_report_and_secrets_reach_nothing()
     {
         using var source = Source();

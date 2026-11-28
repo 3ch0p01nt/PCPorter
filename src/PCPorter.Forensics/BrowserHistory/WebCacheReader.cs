@@ -152,7 +152,7 @@ public static class WebCacheReader
         if (url is null) return null;
         var referrer = addresses.FirstOrDefault(a => a != url);
         var target = strings.LastOrDefault(IsWindowsPath) ?? "";
-        return new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), target, e.When, 0,
+        return new Download(profile, Redactor.Redact(url), referrer is null ? null : Redactor.Redact(referrer), Redactor.Redact(target), e.When, 0,
             DownloadState.Unknown, target.Length == 0 ? null : stillOnDisk?.Invoke(target));
     }
 
