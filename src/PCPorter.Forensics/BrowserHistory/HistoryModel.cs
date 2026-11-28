@@ -64,4 +64,26 @@ public sealed record HistoryScan(
     IReadOnlyList<BrowserProfile> Profiles, IReadOnlyList<ProfileCoverage> Coverage,
     IReadOnlyList<Visit> Visits, IReadOnlyList<Search> Searches, IReadOnlyList<Download> Downloads,
     IReadOnlyList<Bookmark> Bookmarks, IReadOnlyList<OpenTab> Tabs, IReadOnlyList<FormEntry> Forms,
-    IReadOnlyList<string> Notes, IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Notes, IReadOnlyList<string> Warnings)
+{
+    /// <summary>The time zone the scanned PC was set to (the report shows times in the viewer's zone and names both).</summary>
+    public PcTimeZone TimeZone { get; init; } = PcTimeZone.Unknown;
+}
+
+/// <summary>A PC's time zone setting: Windows id (e.g. "W. Europe Standard Time"), IANA id when known, and a display name.</summary>
+public sealed record PcTimeZone(string? WindowsId, string? Iana, string Display)
+{
+    public static PcTimeZone Unknown { get; } = new(null, null, "unknown");
+
+    /// <summary>From a Windows time zone id (the SYSTEM hive's TimeZoneKeyName); unknown when empty.</summary>
+    public static PcTimeZone FromWindowsId(string? id)
+    {
+        id = id?.Trim('\0', ' ');
+        if (string.IsNullOrEmpty(id)) return Unknown;
+        var iana = TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out var i) ? i : null;
+        string display;
+        try { display = TimeZoneInfo.FindSystemTimeZoneById(id).DisplayName; }
+        catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException) { display = id; }
+        return new(id, iana, display);
+    }
+}

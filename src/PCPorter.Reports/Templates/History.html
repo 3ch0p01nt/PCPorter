@@ -107,7 +107,7 @@
     <h2>Charts</h2>
     <div class="charts">
       <div class="card"><h3 id="perday-title">Visits per day</h3><svg id="perday" aria-labelledby="perday-title"></svg><div class="muted" style="font-size:12px">Click a bar to show those visits.</div></div>
-      <div class="card"><h3 id="heat-title">When: day of week and hour (this computer's time zone)</h3><svg id="heat" aria-labelledby="heat-title"></svg></div>
+      <div class="card"><h3 id="heat-title">When: day of week and hour</h3><svg id="heat" aria-labelledby="heat-title"></svg></div>
       <div class="card"><h3 id="top-title">Most visited sites</h3><svg id="top" aria-labelledby="top-title"></svg><div class="muted" style="font-size:12px">Click a site to show its visits.</div></div>
       <div class="card"><h3 id="how-title">How pages were opened</h3><svg id="how" aria-labelledby="how-title"></svg></div>
     </div>
@@ -172,7 +172,7 @@
           gone unless they are recovered from leftover data or a restore point.</li>
         <li>Firefox keeps no separate list of searches: searches are recognised from the addresses of search result pages.</li>
         <li>Private (InPrivate / Incognito) windows leave almost no history. A missing visit does not prove a site was never opened.</li>
-        <li>Times are recorded by the browser in UTC and shown here in this computer's time zone. The CSV export contains UTC times.</li>
+        <li id="zone-note">Times are recorded by the browser in UTC and shown here in the time zone of the computer showing this page. The CSV export contains UTC times.</li>
         <li>"Recovered" rows come from leftover data inside the browser's files (free space, or earlier versions of pages kept in the
           write-ahead log; changes the browser had not finished saving are skipped) or from older copies in restore points; they are marked
           in the Origin column. A recovered row may have been deleted, or be an older copy of a visit: it is not proof of a deletion.</li>
@@ -219,8 +219,21 @@
   const dur = s => !s ? "" : s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min`;
   const visits = data.visits;
 
+  // Time zones: times are shown in the zone of the browser showing this page; the scanned PC's own zone is named too.
+  const viewZone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })();
+  const offsetText = (() => { const m = -new Date().getTimezoneOffset(); return `UTC${m < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(m) / 60))}:${pad(Math.abs(m) % 60)}`; })();
+  const zone = viewZone || offsetText;
+  const pcZone = data.pcTimeZone || { display: "unknown" };
+  const pcZoneText = !pcZone.windowsId ? "the scanned PC's time zone is unknown"
+    : pcZone.iana && pcZone.iana === viewZone ? "the same as the scanned PC's" : `the scanned PC was set to ${pcZone.display}`;
+
   // Header, theme, navigation
-  $("meta").textContent = `${data.meta.computer} - generated ${fmt(Date.parse(data.meta.generatedUtc) / 1000)} - PCPorter ${data.meta.toolVersion} - accounts: ${(data.meta.users || []).join(", ") || "none"}`;
+  $("meta").textContent = `${data.meta.computer} - generated ${fmt(Date.parse(data.meta.generatedUtc) / 1000)} - PCPorter ${data.meta.toolVersion} - accounts: ${(data.meta.users || []).join(", ") || "none"}` +
+    ` - times in ${zone} (${pcZoneText})`;
+  $("heat-title").textContent = `When: day of week and hour (${zone})`;
+  $("zone-note").textContent = `Times are recorded by the browser in UTC and shown here in the time zone of the computer showing this page (${zone}); ` +
+    (!pcZone.windowsId ? "the scanned PC's own time zone setting could not be read." : `the scanned PC was set to ${pcZone.display}${pcZone.iana ? ` (${pcZone.iana})` : ""}.`) +
+    " The CSV export contains UTC times.";
   const applyTheme = t => { const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches); document.documentElement.dataset.theme = dark ? "dark" : "light"; };
   const theme = store.get("pcporter-theme", "system"); $("theme").value = theme; applyTheme(theme);
   $("theme").onchange = () => { store.set("pcporter-theme", $("theme").value); applyTheme($("theme").value); };
@@ -266,7 +279,7 @@
   let fromS = filterFrom(), toS = filterTo(), visitTable = null, ready = false;
   const originOf = v => (originText[ORG[v[6]]] || ORG[v[6]]) + (v[7] >= 0 ? ` (${S[v[7]]})` : "");
   const visitColumns = [
-    { label: "When", get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "11.5rem", descFirst: true },
+    { label: `When (${zone})`, get: v => v[3], text: v => fmt(v[3]), csv: v => utc(v[3]), width: "13rem", descFirst: true },
     { label: "Title", get: v => v[2] >= 0 ? S[v[2]] : "", width: "minmax(0,1.3fr)", filter: true },
     { label: "Address", get: v => S[v[1]], width: "minmax(0,2fr)", filter: true },
     { label: "How", get: v => howText[HOW[v[4]]] || HOW[v[4]], width: "10rem", filter: "select" },
@@ -343,7 +356,7 @@
 
   // Searches
   vtable($("searches"), [
-    { label: "When", get: s => s.t, text: s => fmt(s.t), csv: s => utc(s.t), width: "11.5rem", descFirst: true },
+    { label: `When (${zone})`, get: s => s.t, text: s => fmt(s.t), csv: s => utc(s.t), width: "13rem", descFirst: true },
     { label: "Searched for", get: s => s.terms, width: "minmax(0,2fr)", filter: true },
     { label: "Engine", get: s => s.engine, width: "10rem", filter: "select" },
     { label: "Browser", get: s => profText(s.p), width: "11rem", filter: "select" },

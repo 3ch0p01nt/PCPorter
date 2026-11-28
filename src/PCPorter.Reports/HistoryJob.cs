@@ -121,7 +121,7 @@ public static class HistoryJob
                              "Delete it by hand when PCPorter is closed.");
 
             var scan = new HistoryScan(profiles, coverage, visits.OrderBy(v => v.When).ToList(), searches.OrderBy(s => s.When).ToList(),
-                downloads.OrderBy(d => d.Started).ToList(), bookmarks, tabs, forms, notes, warnings);
+                downloads.OrderBy(d => d.Started).ToList(), bookmarks, tabs, forms, notes, warnings) { TimeZone = ScannedTimeZone(source) };
 
             using (var db = CaseDb.Open(Path.Combine(folder.Path, "case.db")))
                 db.Insert(Rows(scan));
@@ -266,6 +266,22 @@ public static class HistoryJob
         bool? OnTheLiveDrive(string path)
         {
             using (SourceFiles.Confine(source.ReadRoot)) return onDisk(path);
+        }
+    }
+
+    /// <summary>The scanned PC's time zone: this PC's for a live run, else the SYSTEM hive's TimeZoneKeyName (unknown if unreadable).</summary>
+    static PcTimeZone ScannedTimeZone(ISystemSource source)
+    {
+        if (source.IsLive) return PcTimeZone.FromWindowsId(TimeZoneInfo.Local.Id);
+        try
+        {
+            var set = source.CurrentControlSet();
+            return set is null ? PcTimeZone.Unknown
+                : PcTimeZone.FromWindowsId(source.OpenHive(Hive.System)?.Open(set + @"\Control\TimeZoneInformation")?.GetString("TimeZoneKeyName"));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+        {
+            return PcTimeZone.Unknown;
         }
     }
 

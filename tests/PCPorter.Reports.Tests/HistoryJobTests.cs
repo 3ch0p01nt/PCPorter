@@ -201,6 +201,24 @@ public sealed class HistoryJobTests : IDisposable
     }
 
     [Fact]
+    public void The_scanned_pcs_time_zone_comes_from_its_system_hive_offline_and_from_this_pc_live()
+    {
+        var system = RegSpec.Root().Key("Select", k => k.Num("Current", 1))
+            .Key(@"ControlSet001\Control\TimeZoneInformation", k => k.Str("TimeZoneKeyName", "Tokyo Standard Time"));
+        using var tokyo = new FakeSystemSource(_drive, system: system, users: [Bob]);
+        var r = HistoryJob.Run(_out, tokyo, new HistoryJobOptions(), now: Now);
+        Assert.Equal(("Tokyo Standard Time", "Asia/Tokyo"), (r.Scan.TimeZone.WindowsId, r.Scan.TimeZone.Iana));
+        Assert.Contains("\"pcTimeZone\":{\"windowsId\":\"Tokyo Standard Time\",\"iana\":\"Asia/Tokyo\"", File.ReadAllText(r.ReportPath));
+
+        using var noHive = new FakeSystemSource(_drive, users: [Bob]);
+        Assert.Equal(PcTimeZone.Unknown, HistoryJob.Run(_out, noHive, new HistoryJobOptions(), now: Now).Scan.TimeZone);
+
+        using var live = new FakeSystemSource(_drive, system: system, users: [Bob], live: true);
+        var mine = HistoryJob.Run(_out, live, new HistoryJobOptions(CurrentUserSid: Bob.Sid, RestorePoints: false, Elevated: false), now: Now);
+        Assert.Equal(TimeZoneInfo.Local.Id, mine.Scan.TimeZone.WindowsId);
+    }
+
+    [Fact]
     public void Bookmarks_tabs_and_form_entries_reach_the_report_and_secrets_reach_nothing()
     {
         using var source = Source();
