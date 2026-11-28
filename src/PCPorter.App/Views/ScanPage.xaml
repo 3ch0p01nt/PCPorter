@@ -20,11 +20,18 @@
       <TextBlock x:Name="DriveHint" TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,4,0,12" />
 
       <TextBlock Text="Save the results to" FontWeight="SemiBold" />
-      <Grid Margin="0,6,0,16">
+      <Grid Margin="0,6,0,0">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
         <ui:TextBox x:Name="OutFolder" AutomationProperties.Name="Folder to save the results in" />
         <ui:Button Grid.Column="1" Margin="8,0,0,0" Content="Browse..." Click="Browse_Click" AutomationProperties.HelpText="Pick the folder for the results, ideally on your backup drive" />
       </Grid>
+      <StackPanel x:Name="SaveDrivesRow" Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
+        <TextBlock Text="Drives found:" VerticalAlignment="Center" />
+        <ComboBox x:Name="SaveDrives" Margin="8,0,0,0" MinWidth="320" AutomationProperties.Name="Drives found to save the results on" />
+      </StackPanel>
+      <ui:InfoBar x:Name="SystemDriveWarning" Margin="0,6,0,0" IsOpen="False" IsClosable="False" Severity="Warning"
+                  Title="This is the PC's own drive" AutomationProperties.Name="Save folder warning" />
+      <Border Height="16" />
       </StackPanel>
 
       <StackPanel Orientation="Horizontal">
