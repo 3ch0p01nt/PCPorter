@@ -25,7 +25,7 @@ App | Maker | Version | How to get it
 7-Zip | Igor Pavlov | 26.06 | Automatic 7zip.7zip
 Family Recipes | Small Shop | 1.0 | Maker's website
 Microsoft Photos | Microsoft Corporation | 2026.1 | Microsoft Store
-Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+When you set up your new PC, install these apps fresh from their makers instead of copying them across. That way nothing harmful comes along from this PC.
 Hardware health
 16 GB memory · 8 processor threads · x64
 Drives

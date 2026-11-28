@@ -92,12 +92,12 @@ public static class UserChecks
         var policy = PostureScan.With(s.Software, @"Policies\Microsoft\SystemCertificates\Root\Certificates", k => k?.SubKeys.Count());
         ev.Insert(0, $"Machine root store: {Make.Num(machine)} certificate(s) (not judged); policy root store: {Make.Num(policy)}; users read: {s.UserHives.Count}, unreadable: {s.UsersWithoutHive}");
         var evidence = string.Join("; ", ev);
-        var orgNote = policy is > 0 ? $" Your organisation also added {policy} certificate(s) by policy, which is normal for work PCs." : "";
+        var orgNote = policy is > 0 ? $" Your organization also added {policy} certificate(s) by policy, which is normal for work PCs." : "";
 
         if (userAdded.Count > 0)
             return Make.Check(id, title, PostureStatus.Attention, PostureSeverity.Medium,
                 $"Extra 'trusted' certificates were added for individual accounts ({string.Join(", ", userAdded)}).{orgNote}",
-                "Developer tools, work VPNs and some security products add these. If you do not recognise them, ask someone technical to review them: a rogue one could let an attacker read secure web traffic.", evidence);
+                "Developer tools, work VPNs and some security products add these. If you do not recognize them, ask someone technical to review them: a rogue one could let an attacker read secure web traffic.", evidence);
         if (s.UserHives.Count == 0 && machine is null)
             return Make.Unknown(id, title, "We could not read the trusted certificate lists.", evidence);
         if (s.UserHives.Count == 0)

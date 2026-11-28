@@ -22,7 +22,7 @@ App list
 App | Maker | Version | How to get it
 Avast Free Antivirus | Avast Software | 23.1 | Maker's website
 Google Chrome | Google LLC | 120.0 | Automatic Google.Chrome
-Programs are installed fresh from their makers, never copied, so nothing harmful comes along. Scan your new PC too to compare the two side by side.
+When you set up your new PC, install these apps fresh from their makers instead of copying them across. That way nothing harmful comes along from this PC.
 Hardware health
 x64
 Drives

@@ -58,7 +58,7 @@ public static partial class AccountChecks
             var evidence = $"PassiveMode={Make.Num(passive)} Features\\TamperProtection={Make.Num(tamper)} DisableRealtimeMonitoring={Make.Num(rtOff)} Policy DisableAntiSpyware={Make.Num(policyOff)}. Offline: whether Defender was the active antivirus cannot be confirmed from a drive.";
             if (passive == 1 || policyOff == 1)
                 return Make.Check(id, title, PostureStatus.NotApplicable, PostureSeverity.Info,
-                    "Microsoft Defender was set to stand by (another antivirus or your organisation manages protection).",
+                    "Microsoft Defender was set to stand by (another antivirus or your organization manages protection).",
                     "Nothing to do here; make sure the other antivirus is kept up to date.", evidence);
             if (rtOff == 1) return Make.Check(id, title, PostureStatus.Risk, PostureSeverity.High,
                 "Microsoft Defender's real-time protection was switched off.",

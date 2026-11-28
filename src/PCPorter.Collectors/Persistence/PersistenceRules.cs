@@ -161,7 +161,7 @@ public static class PersistenceRules
     }
 
     static string Unsigned(SignatureInfo sig) => sig.Status == SignatureStatus.Invalid
-        ? "The program's signature is not valid" : "The program is not signed";
+        ? "The program's digital signature is broken" : "The program has no digital signature (the stamp that proves who made it)";
 
     /// <summary>Returns a plain description of the first suspicious pattern found in the command, script text or payload path.</summary>
     public static string? Suspicious(string? command, string? scriptText, string? normalizedPayload)
