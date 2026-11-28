@@ -12,7 +12,7 @@ namespace PCPorter.App;
 
 public partial class App : Application
 {
-    Mutex? _singleInstance;
+    SingleInstance? _singleInstance;
 
     const uint LOAD_LIBRARY_SEARCH_APPLICATION_DIR = 0x200, LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x800;
 
@@ -53,10 +53,10 @@ public partial class App : Application
             return;
         }
 
-        _singleInstance = new Mutex(true, @"Global\PCPorter-7d1f6a2e", out bool isFirst);
-        if (!isFirst)
+        _singleInstance = SingleInstance.TryClaim(() => Dispatcher.BeginInvoke(BringForward));
+        if (_singleInstance is null)
         {
-            MessageBox.Show("PCPorter is already running.", "PCPorter", MessageBoxButton.OK, MessageBoxImage.Information);
+            Log.Information("PCPorter is already running: asked it to come forward");
             Shutdown(0);
             return;
         }
@@ -66,6 +66,18 @@ public partial class App : Application
         Log.Information("PCPorter started");
         new MainWindow().Show();
         if (AppFolders.IsElevated) _ = Task.Run(CleanUpShadowCopies);
+    }
+
+    /// <summary>Another start asked: restore and activate the open window.</summary>
+    void BringForward()
+    {
+        if (MainWindow is not { } w) return;
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Show();
+        w.Activate();
+        w.Topmost = true;    // Activate alone may only flash the taskbar button
+        w.Topmost = false;
+        w.Focus();
     }
 
     /// <summary>Log-off or shut-down: no dialog is possible, so stop any job and give it a few seconds to clean up.</summary>
