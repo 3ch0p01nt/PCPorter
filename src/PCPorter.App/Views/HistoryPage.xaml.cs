@@ -33,7 +33,8 @@ public partial class HistoryPage : Page
     public HistoryPage()
     {
         InitializeComponent();
-        OutFolder.Text = string.IsNullOrWhiteSpace(_memory.SaveFolder) ? WindowsDrives.SuggestedSaveFolder() : _memory.SaveFolder;
+        if (string.IsNullOrWhiteSpace(_memory.SaveFolder)) _ = WindowsDrives.SuggestSaveFolderAsync(() => OutFolder.Text, s => OutFolder.Text = s);
+        else OutFolder.Text = _memory.SaveFolder;
         Remembered.RestoreOptions(_memory, ("allUsers", AllUsers), ("restorePoints", RestorePoints));
         ThisPc.Checked += (_, _) => UpdateOptions();
         OtherDrive.Checked += (_, _) => UpdateOptions();

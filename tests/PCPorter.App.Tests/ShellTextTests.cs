@@ -19,6 +19,30 @@ public class ShellTextTests
     }
 
     [Fact]
+    public async Task Save_folder_shows_the_default_at_once_and_the_backup_drive_when_found()
+    {
+        var box = "";
+        using var release = new SemaphoreSlim(0);
+        var pending = WindowsDrives.SuggestSaveFolderAsync(() => box, s => box = s, () => { release.Wait(); return @"F:\"; });
+        Assert.Equal(WindowsDrives.DefaultSaveFolder, box);     // before the (slow) drive lookup has answered
+        release.Release();
+        await pending;
+        Assert.Equal(@"F:\", box);
+    }
+
+    [Fact]
+    public async Task Save_folder_typed_meanwhile_is_kept()
+    {
+        var box = "";
+        using var release = new SemaphoreSlim(0);
+        var pending = WindowsDrives.SuggestSaveFolderAsync(() => box, s => box = s, () => { release.Wait(); return @"F:\"; });
+        box = @"D:\Mine";
+        release.Release();
+        await pending;
+        Assert.Equal(@"D:\Mine", box);
+    }
+
+    [Fact]
     public void Drive_hint_never_points_at_a_help_page_that_does_not_exist()
     {
         foreach (var elevated in new[] { true, false })

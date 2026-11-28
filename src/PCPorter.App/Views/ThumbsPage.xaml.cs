@@ -26,7 +26,8 @@ public partial class ThumbsPage : Page
     {
         InitializeComponent();
         var memory = Remembered.Pages.Get(MemoryKey);
-        OutFolder.Text = string.IsNullOrWhiteSpace(memory.SaveFolder) ? SuggestFolder() : memory.SaveFolder;
+        if (string.IsNullOrWhiteSpace(memory.SaveFolder)) _ = WindowsDrives.SuggestSaveFolderAsync(() => OutFolder.Text, s => OutFolder.Text = s);
+        else OutFolder.Text = memory.SaveFolder;
         Remembered.RestoreOptions(memory, ("webCaches", WebCaches), ("fullIndex", FullIndex), ("allUsers", AllUsers));
         AllUsers.IsEnabled = _elevated;
         if (!_elevated) { AllUsers.IsChecked = false; AllUsers.ToolTip = "Needs PCPorter to run as administrator."; }
@@ -40,13 +41,6 @@ public partial class ThumbsPage : Page
 
     void RememberRun(RunOutcome outcome, string summary) =>
         Remembered.Pages.Update(MemoryKey, m => m with { LastRun = new LastRun(DateTime.Now, outcome, summary, _reportPath, _caseFolder) });
-
-    /// <summary>First removable drive (the backup drive), else a local folder outside any synced location.</summary>
-    static string SuggestFolder()
-    {
-        var removable = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.DriveType == DriveType.Removable);
-        return removable?.RootDirectory.FullName ?? @"C:\PCPorterCases";
-    }
 
     void Browse_Click(object sender, RoutedEventArgs e)
     {

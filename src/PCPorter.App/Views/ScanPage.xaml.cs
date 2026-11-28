@@ -44,7 +44,8 @@ public partial class ScanPage : Page
     {
         InitializeComponent();
         Cards.ItemsSource = _cards;
-        OutFolder.Text = string.IsNullOrWhiteSpace(_memory.SaveFolder) ? WindowsDrives.SuggestedSaveFolder() : _memory.SaveFolder;
+        if (string.IsNullOrWhiteSpace(_memory.SaveFolder)) _ = WindowsDrives.SuggestSaveFolderAsync(() => OutFolder.Text, s => OutFolder.Text = s);
+        else OutFolder.Text = _memory.SaveFolder;
         _timer.Tick += (_, _) => Elapsed.Text = $"Elapsed {DateTime.Now - _startedAt:mm\\:ss}";
         ShowLastRun();
         Loaded += async (_, _) =>

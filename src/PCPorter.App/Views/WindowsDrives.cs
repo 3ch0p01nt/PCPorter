@@ -44,7 +44,27 @@ public static class WindowsDrives
                 ? "A locked drive was found. Unlock it in File Explorer with its BitLocker recovery key (aka.ms/myrecoverykey), then press Refresh."
                 : "";
 
-    /// <summary>The first connected removable drive (the backup drive), else a local folder outside any synced location.</summary>
-    public static string SuggestedSaveFolder() =>
-        DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.DriveType == DriveType.Removable)?.RootDirectory.FullName ?? @"C:\PCPorterCases";
+    /// <summary>A local folder outside any synced location: shown at once, until the backup drive is found.</summary>
+    public const string DefaultSaveFolder = @"C:\PCPorterCases";
+
+    /// <summary>
+    /// The first connected removable drive (the backup drive), else <see cref="DefaultSaveFolder"/>. Slow for a sleeping
+    /// USB disk (IsReady waits for it): call off the UI thread.
+    /// </summary>
+    public static string SuggestedSaveFolder()
+    {
+        try { return DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.DriveType == DriveType.Removable)?.RootDirectory.FullName ?? DefaultSaveFolder; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return DefaultSaveFolder; }
+    }
+
+    /// <summary>
+    /// Fills a page's save-folder box without blocking the window: <see cref="DefaultSaveFolder"/> at once, then the
+    /// backup drive when found, unless the person has changed the box in the meantime.
+    /// </summary>
+    public static async Task SuggestSaveFolderAsync(Func<string> get, Action<string> set, Func<string>? find = null)
+    {
+        set(DefaultSaveFolder);
+        var found = await Task.Run(find ?? SuggestedSaveFolder);
+        if (get() == DefaultSaveFolder) set(found);
+    }
 }
