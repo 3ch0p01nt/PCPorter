@@ -13,6 +13,9 @@ internal static class ImageTestData
     public static byte[] Jpeg(int width, int height, Func<int, int, double> grey, int quality = 85) =>
         Encode(new JpegBitmapEncoder { QualityLevel = quality }, width, height, grey);
 
+    public static byte[] Encoded(BitmapEncoder encoder, int width, int height, Func<int, int, double> grey) =>
+        Encode(encoder, width, height, grey);
+
     /// <summary>Smooth blobs: a "photo-like" picture.</summary>
     public static double Blobs(int x, int y, int w, int h)
     {

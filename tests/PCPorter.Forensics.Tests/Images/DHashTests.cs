@@ -43,6 +43,48 @@ public class DHashTests(ITestOutputHelper output)
         Assert.Null(DHash.Compute(Original[..40])); // truncated PNG
     }
 
+    static byte[] As(System.Windows.Media.Imaging.BitmapEncoder encoder) =>
+        ImageTestData.Encoded(encoder, 160, 120, (x, y) => ImageTestData.Blobs(x, y, 160, 120));
+
+    // The picture bytes come from an old PC: only the four formats Windows decodes with its own built-in codecs are
+    // hashed. TIFF and JPEG XR decode fine in Windows but are not on the list, so they show that nothing else is tried.
+    [Fact]
+    public void Only_jpeg_png_bmp_and_gif_are_hashed()
+    {
+        Assert.NotNull(DHash.Compute(As(new System.Windows.Media.Imaging.BmpBitmapEncoder())));
+        Assert.NotNull(DHash.Compute(As(new System.Windows.Media.Imaging.GifBitmapEncoder())));
+        Assert.Null(DHash.Compute(As(new System.Windows.Media.Imaging.TiffBitmapEncoder())));
+        Assert.Null(DHash.Compute(As(new System.Windows.Media.Imaging.WmpBitmapEncoder())));
+    }
+
+    [Theory]
+    [InlineData("avif", new byte[] { 0, 0, 0, 0x1C, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'a', (byte)'v', (byte)'i', (byte)'f', 0, 0, 0, 0 })]
+    [InlineData("heic", new byte[] { 0, 0, 0, 0x18, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'h', (byte)'e', (byte)'i', (byte)'c', 0, 0, 0, 0 })]
+    [InlineData("webp", new byte[] { (byte)'R', (byte)'I', (byte)'F', (byte)'F', 8, 0, 0, 0, (byte)'W', (byte)'E', (byte)'B', (byte)'P', (byte)'V', (byte)'P', (byte)'8', (byte)' ' })]
+    [InlineData("tiff", new byte[] { (byte)'I', (byte)'I', 42, 0, 8, 0, 0, 0, 0, 0, 0, 0 })]
+    [InlineData("svg", new byte[] { (byte)'<', (byte)'s', (byte)'v', (byte)'g', (byte)' ', (byte)'/', (byte)'>' })]
+    [InlineData("random", new byte[] { 0x13, 0x37, 0xC0, 0xDE, 0, 1, 2, 3, 4, 5, 6, 7 })]
+    [InlineData("almost jpeg", new byte[] { 0xFF, 0xD8, 0x00 })]
+    public void Other_formats_never_reach_a_decoder(string name, byte[] bytes)
+    {
+        int calls = 0;
+        Assert.Null(DHash.Compute(bytes, (_, _) => { calls++; return 1UL; }));
+        Assert.True(calls == 0, name);
+    }
+
+    [Fact]
+    public void Each_allowed_format_is_decoded_with_its_built_in_codec()
+    {
+        var seen = new List<Guid>();
+        ulong? Spy(Guid codec, byte[] _) { seen.Add(codec); return 1UL; }
+        DHash.Compute(Original, Spy);                                                      // PNG
+        DHash.Compute(Resaved, Spy);                                                       // JPEG
+        DHash.Compute(As(new System.Windows.Media.Imaging.BmpBitmapEncoder()), Spy);
+        DHash.Compute(As(new System.Windows.Media.Imaging.GifBitmapEncoder()), Spy);
+        Assert.Equal([Windows.Graphics.Imaging.BitmapDecoder.PngDecoderId, Windows.Graphics.Imaging.BitmapDecoder.JpegDecoderId,
+            Windows.Graphics.Imaging.BitmapDecoder.BmpDecoderId, Windows.Graphics.Imaging.BitmapDecoder.GifDecoderId], seen);
+    }
+
     [Fact]
     public void Group_joins_near_duplicates_transitively()
     {
